@@ -1,0 +1,22 @@
+video_processing:
+  temp_dir: "./temp"
+  output_dir: "./output"
+  max_frames: 100
+  frame_mode: "scenes"  # Режимы: scenes, interval
+  frame_interval: 30    # Секунд между кадрами в interval режиме
+
+transcription:
+  model: "medium"       # Модель Whisper
+  use_gpu: true
+  language: "auto"      # Язык распознавания (auto для автоопределения)
+
+image_processing:
+  blip_enabled: true
+  image_quality: 85
+  caption_length: 70
+
+output:
+  format: "markdown"
+  pdf_options:
+    dpi: 300
+    page_size: A4
