@@ -29,28 +29,3 @@ choco install ffmpeg
 
 # MacOS
 brew install ffmpeg
-# Ubuntu/Debian
-sudo apt-get install wkhtmltopdf
-
-# Windows: https://wkhtmltopdf.org/downloads.html
-```
-## Установка Python-зависимостей
-```bash
-git clone https://github.com/yourusername/youtube-educational-converter.git
-cd youtube-educational-converter
-pip install -r requirements.txt
-```
-## Базовый запуск:
-```bash
-python src/main.py --url "https://youtu.be/your-video-id"
-```
-## Расширенные параметры:
-```bash
-python src/main.py \
-  --url "https://youtu.be/your-video-id" \
-  --output-format pdf \
-  --frame-mode scenes \
-  --max-frames 50 \
-  --model large \
-  --quality high
-  ```
