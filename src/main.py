@@ -9,7 +9,7 @@ import os
 app = Flask(__name__)
 
 # Получаем порт из переменных окружения (Render его задает автоматически)
-PORT = int(os.getenv("PORT", 8080))
+PORT = int(os.getenv("PORT", 10000))
 
 class VideoConverter:
     def __init__(self, config):
@@ -60,4 +60,4 @@ def convert_video():
     return jsonify(result)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=PORT, debug=True)
+    app.run(host="0.0.0.0", port=PORT, debug=False)
