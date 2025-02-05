@@ -1,3 +1,3 @@
 #!/bin/bash
 echo "Запуск приложения на порту $PORT..."
-python src/main.py
+gunicorn --bind 0.0.0.0:$PORT src.main:app
