@@ -1,6 +1,3 @@
 #!/bin/bash
-echo "Настройка окружения..."
-ffmpeg -version  # Проверяем, установлен ли FFmpeg
-
-echo "Запуск приложения..."
+echo "Запуск приложения на порту $PORT..."
 python src/main.py
