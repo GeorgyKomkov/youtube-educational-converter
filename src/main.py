@@ -49,6 +49,16 @@ converter = VideoConverter({
     "blip": {"enabled": False}
 })
 
+# Добавляем HTML форму здесь (ПЕРЕД существующим роутом /convert)
+@app.route('/')
+def home():
+    return '''
+    <form action="/convert" method="post">
+        <input type="text" name="url" placeholder="YouTube URL">
+        <button type="submit">Convert</button>
+    </form>
+    '''
+
 @app.route('/convert', methods=['POST'])
 def convert_video():
     data = request.json
