@@ -11,3 +11,4 @@ pdfkit
 markdown2
 tqdm
 Pillow
+flask

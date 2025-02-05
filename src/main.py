@@ -1,8 +1,15 @@
+from flask import Flask, request, jsonify
 from video_downloader import VideoDownloader
 from audio_extractor import AudioExtractor
 from transcription_manager import TranscriptionManager
 from frame_processor import FrameProcessor
 from output_generator import OutputGenerator
+import os
+
+app = Flask(__name__)
+
+# Получаем порт из переменных окружения (Render его задает автоматически)
+PORT = int(os.getenv("PORT", 8080))
 
 class VideoConverter:
     def __init__(self, config):
@@ -32,3 +39,25 @@ class VideoConverter:
         })
         
         return result
+
+# Создаем объект обработчика
+converter = VideoConverter({
+    "temp_dir": "temp/",
+    "output_dir": "output/",
+    "transcription": {"model": "base"},
+    "video_processing": {"max_frames": 50, "frame_mode": "interval"},
+    "blip": {"enabled": False}
+})
+
+@app.route('/convert', methods=['POST'])
+def convert_video():
+    data = request.json
+    url = data.get("url")
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+    
+    result = converter.convert(url)
+    return jsonify(result)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=PORT, debug=True)
