@@ -53,10 +53,38 @@ converter = VideoConverter({
 @app.route('/')
 def home():
     return '''
-    <form action="/convert" method="post">
-        <input type="text" name="url" placeholder="YouTube URL">
-        <button type="submit">Convert</button>
-    </form>
+    <html>
+    <body>
+        <form id="convertForm">
+            <input type="text" name="url" placeholder="YouTube URL" required>
+            <button type="submit">Convert</button>
+        </form>
+        <div id="result"></div>
+
+        <script>
+            document.getElementById('convertForm').onsubmit = function(e) {
+                e.preventDefault();
+                
+                const url = document.querySelector('input[name="url"]').value;
+                
+                fetch('/convert', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: url })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('result').innerText = JSON.stringify(data, null, 2);
+                })
+                .catch(error => {
+                    document.getElementById('result').innerText = 'Error: ' + error;
+                });
+            };
+        </script>
+    </body>
+    </html>
     '''
 
 @app.route('/convert', methods=['POST'])
