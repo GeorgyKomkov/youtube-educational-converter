@@ -4,50 +4,21 @@ from src.audio_extractor import AudioExtractor
 from src.transcription_manager import TranscriptionManager
 from src.frame_processor import FrameProcessor
 from src.output_generator import OutputGenerator
+from src.video_converter import VideoConverter
 import os
+import yaml
 
 app = Flask(__name__)
 
-# Получаем порт из переменных окружения (Render его задает автоматически)
+# Загрузка конфигурации из YAML
+with open('config/config.yaml', 'r', encoding='utf-8') as f:
+    config = yaml.safe_load(f)
+
+# Создание объекта VideoConverter
+converter = VideoConverter(config)  # <-- Эта строка обязательна!
+
+# Получаем порт из переменных окружения
 PORT = int(os.getenv("PORT", 10000))
-
-class VideoConverter:
-    def __init__(self, config):
-        self.config = config
-        self.downloader = VideoDownloader(config['temp_dir'])
-        self.audio_extractor = AudioExtractor(config['temp_dir'])
-        self.transcriber = TranscriptionManager(config['transcription'])
-        self.frame_processor = FrameProcessor(
-            config['output_dir'],
-            max_frames=config['video_processing']['max_frames'],
-            mode=config['video_processing']['frame_mode'],
-            blip_enabled=config['blip']['enabled']
-        )
-        self.output_generator = OutputGenerator(config['output_dir'])
-
-    def convert(self, url):
-        video_path, title = self.downloader.download(url)
-        audio_path = self.audio_extractor.extract(video_path)
-        
-        segments = self.transcriber.transcribe(audio_path)
-        frames = self.frame_processor.process(video_path)
-        
-        result = self.output_generator.generate({
-            'title': title,
-            'segments': segments,
-            'frames': frames
-        })
-        
-        return result
-
-# Создаем объект обработчика
-converter = VideoConverter({
-    "temp_dir": "temp/",
-    "output_dir": "output/",
-    "transcription": {"model": "base"},
-    "video_processing": {"max_frames": 50, "frame_mode": "interval"},
-    "blip": {"enabled": False}
-})
 
 # Добавляем HTML форму здесь (ПЕРЕД существующим роутом /convert)
 @app.route('/')
@@ -87,6 +58,7 @@ def home():
     </html>
     '''
 
+# Обработчик конвертации
 @app.route('/convert', methods=['POST'])
 def convert_video():
     data = request.json

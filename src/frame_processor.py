@@ -3,6 +3,7 @@ import os
 import logging
 import numpy as np
 from PIL import Image
+import torch
 from transformers import pipeline
 
 class FrameProcessor:

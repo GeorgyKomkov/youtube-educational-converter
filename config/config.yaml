@@ -1,22 +1,15 @@
-video_processing:
-  temp_dir: "./temp"
-  output_dir: "./output"
-  max_frames: 100
-  frame_mode: "scenes"  # Режимы: scenes, interval
-  frame_interval: 30    # Секунд между кадрами в interval режиме
+# config/config.yaml
+temp_dir: "temp/"  # Директория для временных файлов
+output_dir: "output/"  # Директория для результатов
 
 transcription:
-  model: "medium"       # Модель Whisper
-  use_gpu: true
-  language: "auto"      # Язык распознавания (auto для автоопределения)
+  model: "base"  # Модель Whisper (base, small, medium)
+  use_gpu: true  # Использовать GPU для транскрибации
 
-image_processing:
-  blip_enabled: true
-  image_quality: 85
-  caption_length: 70
+video_processing:
+  max_frames: 50  # Максимальное число кадров
+  frame_mode: "interval"  # Режим выбора кадров (scenes или interval)
+  frame_interval: 30  # Интервал в секундах (для режима interval)
 
-output:
-  format: "markdown"
-  pdf_options:
-    dpi: 300
-    page_size: A4
+blip:
+  enabled: false  # Включить генерацию описаний кадров через BLIP
