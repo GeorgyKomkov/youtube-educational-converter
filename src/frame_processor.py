@@ -4,6 +4,8 @@ import logging
 import numpy as np
 from PIL import Image
 import torch
+import torchvision.models as models
+import torchvision.transforms as transforms
 from transformers import pipeline
 
 class FrameProcessor:
@@ -26,6 +28,19 @@ class FrameProcessor:
                 model="Salesforce/blip-image-captioning-base",
                 device="cuda" if torch.cuda.is_available() else "cpu"
             )
+        
+        # Модель для эмбеддингов
+        self.embedding_model = models.resnet50(pretrained=True)
+        self.embedding_model.eval()
+        self.transform = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            )
+        ])
 
     def process(self, video_path):
         try:
@@ -94,9 +109,33 @@ class FrameProcessor:
             return "Кадр из видео"
 
     def _get_image_embedding(self, image):
-        # Реализация получения эмбеддинга изображения
-        pass
+        """Получение эмбеддинга изображения"""
+        try:
+            # Преобразование PIL-изображения 
+            input_tensor = self.transform(image).unsqueeze(0)
+            
+            with torch.no_grad():
+                features = self.embedding_model(input_tensor)
+                embedding = features.squeeze().numpy()
+            
+            return embedding
+        except Exception as e:
+            self.logger.warning(f"Ошибка получения эмбеддинга: {e}")
+            return None
+
+    def _save_frame(self, image, timestamp):
+        filename = os.path.join(
+            self.output_dir, 
+            'screenshots', 
+            f'frame_{timestamp:.2f}.jpg'
+        )
+        image.save(filename)
+        return filename
+
+    def _detect_scene_changes(self, total_frames, fps):
+        # Простая реализация обнаружения смены сцен
+        return list(range(0, total_frames, int(fps * 10)))
 
     def _select_most_relevant_frames(self, frames):
         # Алгоритм выбора наиболее уникальных кадров
-        return frames
+        return frames[:self.max_frames]

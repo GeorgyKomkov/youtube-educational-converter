@@ -1,73 +1,120 @@
-from flask import Flask, request, jsonify
-from src.video_downloader import VideoDownloader
-from src.audio_extractor import AudioExtractor
-from src.transcription_manager import TranscriptionManager
-from src.frame_processor import FrameProcessor
-from src.output_generator import OutputGenerator
-from src.video_converter import VideoConverter
 import os
 import yaml
+import logging
+from flask import Flask, request, jsonify, render_template
+from werkzeug.exceptions import HTTPException
 
-app = Flask(__name__)
+# Импорт всех необходимых классов
+from src.video_converter import VideoConverter
 
-# Загрузка конфигурации из YAML
-with open('config/config.yaml', 'r', encoding='utf-8') as f:
-    config = yaml.safe_load(f)
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__, 
+            template_folder='templates', 
+            static_folder='static')
+
+# Загрузка конфигурации
+try:
+    with open('config/config.yaml', 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+except Exception as e:
+    logger.critical(f"Ошибка загрузки конфигурации: {e}")
+    config = {}
 
 # Создание объекта VideoConverter
-converter = VideoConverter(config)  # <-- Эта строка обязательна!
+converter = VideoConverter(config)
 
 # Получаем порт из переменных окружения
 PORT = int(os.getenv("PORT", 10000))
 
-# Добавляем HTML форму здесь (ПЕРЕД существующим роутом /convert)
 @app.route('/')
 def home():
-    return '''
-    <html>
-    <body>
-        <form id="convertForm">
-            <input type="text" name="url" placeholder="YouTube URL" required>
-            <button type="submit">Convert</button>
-        </form>
-        <div id="result"></div>
+    return render_template('index.html')
 
-        <script>
-            document.getElementById('convertForm').onsubmit = function(e) {
-                e.preventDefault();
-                
-                const url = document.querySelector('input[name="url"]').value;
-                
-                fetch('/convert', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ url: url })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('result').innerText = JSON.stringify(data, null, 2);
-                })
-                .catch(error => {
-                    document.getElementById('result').innerText = 'Error: ' + error;
-                });
-            };
-        </script>
-    </body>
-    </html>
-    '''
-
-# Обработчик конвертации
 @app.route('/convert', methods=['POST'])
 def convert_video():
-    data = request.json
-    url = data.get("url")
-    if not url:
-        return jsonify({"error": "URL is required"}), 400
+    try:
+        data = request.json
+        url = data.get("url")
+        
+        # Валидация URL
+        if not url:
+            return jsonify({
+                "status": "error", 
+                "message": "URL является обязательным полем"
+            }), 400
+        
+        # Проверка корректности URL 
+        if not url.startswith(('http://', 'https://', 'www.')):
+            return jsonify({
+                "status": "error", 
+                "message": "Некорректный формат URL"
+            }), 400
+        
+        # Конвертация видео
+        result = converter.convert(url)
+        
+        return jsonify({
+            "status": "success", 
+            "output": result,
+            "message": "Видео успешно конвертировано"
+        })
     
-    result = converter.convert(url)
-    return jsonify(result)
+    except ValueError as ve:
+        logger.error(f"Ошибка валидации: {ve}")
+        return jsonify({
+            "status": "validation_error", 
+            "message": str(ve)
+        }), 400
+    
+    except Exception as e:
+        logger.error(f"Необработанная ошибка конвертации: {e}")
+        return jsonify({
+            "status": "error", 
+            "message": "Произошла непредвиденная ошибка при конвертации"
+        }), 500
+
+@app.route('/status')
+def app_status():
+    return jsonify({
+        "status": "online",
+        "components": {
+            "video_downloader": True,
+            "audio_extractor": True,
+            "transcription": config['transcription']['model'],
+            "frame_processing": config['video_processing']['max_frames']
+        }
+    })
+
+# Глобальный обработчик ошибок
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # HTTP-ошибки
+    if isinstance(e, HTTPException):
+        return jsonify({
+            "status": "http_error",
+            "message": e.description
+        }), e.code
+    
+    # Все прочие ошибки
+    logger.error(f"Критическая ошибка: {e}", exc_info=True)
+    return jsonify({
+        "status": "critical_error", 
+        "message": "Внутренняя ошибка сервера"
+    }), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=PORT, debug=False)
+    app.run(
+        host="0.0.0.0", 
+        port=PORT, 
+        debug=False
+    )
