@@ -1,120 +1,178 @@
+from flask import Flask, request, jsonify
+from src.video_downloader import VideoDownloader
+from src.audio_extractor import AudioExtractor
+from src.transcription_manager import TranscriptionManager
+from src.frame_processor import FrameProcessor
+from src.output_generator import OutputGenerator
 import os
-import yaml
 import logging
-from flask import Flask, request, jsonify, render_template
-from werkzeug.exceptions import HTTPException
-
-# Импорт всех необходимых классов
-from src.video_converter import VideoConverter
 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('app.log'),
-        logging.StreamHandler()
-    ]
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__, 
-            template_folder='templates', 
-            static_folder='static')
+app = Flask(__name__)
 
-# Загрузка конфигурации
-try:
-    with open('config/config.yaml', 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
-except Exception as e:
-    logger.critical(f"Ошибка загрузки конфигурации: {e}")
-    config = {}
-
-# Создание объекта VideoConverter
-converter = VideoConverter(config)
-
-# Получаем порт из переменных окружения
 PORT = int(os.getenv("PORT", 10000))
+
+class VideoConverter:
+    def __init__(self, config):
+        self.config = config
+        self.downloader = VideoDownloader(config['temp_dir'])
+        self.audio_extractor = AudioExtractor(config['temp_dir'])
+        self.transcriber = TranscriptionManager(config['transcription'])
+        self.frame_processor = FrameProcessor(
+            config['output_dir'],
+            max_frames=config['video_processing']['max_frames'],
+            mode=config['video_processing']['frame_mode'],
+            blip_enabled=config['blip']['enabled']
+        )
+        self.output_generator = OutputGenerator(config['output_dir'])
+
+    def convert(self, url):
+        try:
+            video_path, title = self.downloader.download(url)
+            audio_path = self.audio_extractor.extract(video_path)
+            
+            segments = self.transcriber.transcribe(audio_path)
+            frames = self.frame_processor.process(video_path)
+            
+            result = self.output_generator.generate({
+                'title': title,
+                'segments': segments,
+                'frames': frames
+            })
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error during conversion: {str(e)}")
+            raise
+
+converter = VideoConverter({
+    "temp_dir": "temp/",
+    "output_dir": "output/",
+    "transcription": {"model": "base"},
+    "video_processing": {"max_frames": 50, "frame_mode": "interval"},
+    "blip": {"enabled": False}
+})
 
 @app.route('/')
 def home():
-    return render_template('index.html')
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>YouTube Video Converter</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                max-width: 800px;
+                margin: 20px auto;
+                padding: 0 20px;
+            }
+            .form-container {
+                background: #f5f5f5;
+                padding: 20px;
+                border-radius: 5px;
+            }
+            input[type="text"] {
+                width: 100%;
+                padding: 10px;
+                margin: 10px 0;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+            }
+            button {
+                background: #4CAF50;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+            button:hover {
+                background: #45a049;
+            }
+            #result {
+                margin-top: 20px;
+                padding: 10px;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>YouTube Video to Educational Textbook Converter</h1>
+        <div class="form-container">
+            <form id="convertForm">
+                <input type="text" id="url" name="url" placeholder="Введите URL видео с YouTube" required>
+                <button type="submit">Конвертировать</button>
+            </form>
+        </div>
+        <div id="result"></div>
+
+        <script>
+            document.getElementById('convertForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const resultDiv = document.getElementById('result');
+                resultDiv.textContent = 'Начинаем конвертацию...';
+                
+                try {
+                    const response = await fetch('/convert', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            url: document.getElementById('url').value
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (response.ok) {
+                        resultDiv.textContent = 'Конвертация успешно завершена!';
+                    } else {
+                        resultDiv.textContent = `Ошибка: ${data.error || 'Что-то пошло не так'}`;
+                    }
+                } catch (error) {
+                    resultDiv.textContent = `Ошибка: ${error.message}`;
+                }
+            });
+        </script>
+    </body>
+    </html>
+    '''
 
 @app.route('/convert', methods=['POST'])
 def convert_video():
     try:
         data = request.json
+        if not data:
+            return jsonify({"error": "Invalid JSON data"}), 400
+        
         url = data.get("url")
-        
-        # Валидация URL
         if not url:
-            return jsonify({
-                "status": "error", 
-                "message": "URL является обязательным полем"
-            }), 400
+            return jsonify({"error": "URL is required"}), 400
         
-        # Проверка корректности URL 
         if not url.startswith(('http://', 'https://', 'www.')):
-            return jsonify({
-                "status": "error", 
-                "message": "Некорректный формат URL"
-            }), 400
+            return jsonify({"error": "Invalid URL format"}), 400
         
-        # Конвертация видео
         result = converter.convert(url)
-        
-        return jsonify({
-            "status": "success", 
-            "output": result,
-            "message": "Видео успешно конвертировано"
-        })
-    
-    except ValueError as ve:
-        logger.error(f"Ошибка валидации: {ve}")
-        return jsonify({
-            "status": "validation_error", 
-            "message": str(ve)
-        }), 400
+        return jsonify({"success": True, "result": result})
     
     except Exception as e:
-        logger.error(f"Необработанная ошибка конвертации: {e}")
-        return jsonify({
-            "status": "error", 
-            "message": "Произошла непредвиденная ошибка при конвертации"
-        }), 500
+        logger.error(f"Error processing request: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/status')
-def app_status():
-    return jsonify({
-        "status": "online",
-        "components": {
-            "video_downloader": True,
-            "audio_extractor": True,
-            "transcription": config['transcription']['model'],
-            "frame_processing": config['video_processing']['max_frames']
-        }
-    })
-
-# Глобальный обработчик ошибок
 @app.errorhandler(Exception)
-def handle_exception(e):
-    # HTTP-ошибки
-    if isinstance(e, HTTPException):
-        return jsonify({
-            "status": "http_error",
-            "message": e.description
-        }), e.code
-    
-    # Все прочие ошибки
-    logger.error(f"Критическая ошибка: {e}", exc_info=True)
-    return jsonify({
-        "status": "critical_error", 
-        "message": "Внутренняя ошибка сервера"
-    }), 500
+def handle_error(e):
+    logger.error(f"Unhandled error: {str(e)}")
+    return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0", 
-        port=PORT, 
-        debug=False
-    )
+    # Создаем необходимые директории
+    os.makedirs("temp", exist_ok=True)
+    os.makedirs("output", exist_ok=True)
+    
+    app.run(host="0.0.0.0", port=PORT, debug=False)
