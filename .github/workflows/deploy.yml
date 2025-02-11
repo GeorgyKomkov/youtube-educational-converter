@@ -30,13 +30,13 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
           ssh "$SSH_USER@$SSH_HOST" 'bash -s' << 'EOF'
-            cd /home/ubuntu/youtube-converter || exit 1
-            if [ ! -d .git ]; then
-              git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git .
-            fi
-            git fetch
-            git reset --hard origin/main
-            docker-compose down
-            docker system prune -af --volumes
-            docker-compose up -d --build
-EOF
+          cd /home/ubuntu/youtube-converter || exit 1
+          if [ ! -d .git ]; then
+            git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git .
+          fi
+          git fetch
+          git reset --hard origin/main
+          docker-compose down
+          docker system prune -af --volumes
+          docker-compose up -d --build
+          EOF
