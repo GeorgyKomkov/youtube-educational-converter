@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3'
 
 services:
   app:
@@ -9,9 +9,12 @@ services:
       - PORT=8080
     volumes:
       - ./output:/app/output  # Сохраняем результаты
+      - ./cache:/app/cache
+      - ./torch:/app/torch
     deploy:
       resources:
         limits:
           memory: 400M
         reservations:
           memory: 200M
+    restart: unless-stopped
