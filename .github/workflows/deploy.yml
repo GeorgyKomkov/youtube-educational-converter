@@ -25,8 +25,11 @@ jobs:
             UserKnownHostsFile=/dev/null" > ~/.ssh/config
       
       - name: Deploy to server
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          ssh "$SSH_USER@$SSH_HOST" 'bash -s' << 'EOF'
             cd /home/ubuntu/youtube-converter || exit 1
             if [ ! -d .git ]; then
               git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git .
@@ -36,4 +39,4 @@ jobs:
             docker-compose down
             docker system prune -af --volumes
             docker-compose up -d --build
-          EOF
+EOF
