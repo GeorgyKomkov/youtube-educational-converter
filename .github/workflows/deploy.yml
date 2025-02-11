@@ -17,8 +17,7 @@ jobs:
       
       - name: Add host key
         run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -t rsa,ecdsa,ed25519 ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
       
       - name: Deploy to server
         run: |
