@@ -10,6 +10,24 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       
+      - name: Debug secrets
+        run: |
+          if [ -n "${{ secrets.SSH_HOST }}" ]; then
+            echo "SSH_HOST is set"
+          else
+            echo "SSH_HOST is not set"
+          fi
+          if [ -n "${{ secrets.SSH_USER }}" ]; then
+            echo "SSH_USER is set"
+          else
+            echo "SSH_USER is not set"
+          fi
+          if [ -n "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
+            echo "SSH_PRIVATE_KEY is set"
+          else
+            echo "SSH_PRIVATE_KEY is not set"
+          fi
+      
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.0
         with:
