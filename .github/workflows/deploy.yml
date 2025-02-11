@@ -18,25 +18,21 @@ jobs:
           eval "$(ssh-agent -s)"
           ssh-add ~/.ssh/id_ed25519
       
-      - name: Add known hosts
-        run: |
-          echo "Host *
-            StrictHostKeyChecking no
-            UserKnownHostsFile=/dev/null" > ~/.ssh/config
-      
       - name: Deploy to server
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
-          ssh "$SSH_USER@$SSH_HOST" 'bash -s' << 'EOF'
-          cd /home/ubuntu/youtube-converter || exit 1
-          if [ ! -d .git ]; then
-            git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git .
-          fi
-          git fetch
-          git reset --hard origin/main
-          docker-compose down
-          docker system prune -af --volumes
-          docker-compose up -d --build
-          EOF
+          ssh -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              -i ~/.ssh/id_ed25519 \
+              $SSH_USER@$SSH_HOST \
+              'cd /home/ubuntu/youtube-converter && \
+               if [ ! -d .git ]; then \
+                 git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git .; \
+               fi && \
+               git fetch && \
+               git reset --hard origin/main && \
+               docker-compose down && \
+               docker system prune -af --volumes && \
+               docker-compose up -d --build'
