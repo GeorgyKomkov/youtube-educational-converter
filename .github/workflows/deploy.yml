@@ -10,29 +10,19 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       
-      - name: Install SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          eval "$(ssh-agent -s)"
-          ssh-add ~/.ssh/id_ed25519
-      
       - name: Deploy to server
-        env:
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-        run: |
-          ssh -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/dev/null \
-              -i ~/.ssh/id_ed25519 \
-              $SSH_USER@$SSH_HOST \
-              'cd /home/ubuntu/youtube-converter && \
-               if [ ! -d .git ]; then \
-                 git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git .; \
-               fi && \
-               git fetch && \
-               git reset --hard origin/main && \
-               docker-compose down && \
-               docker system prune -af --volumes && \
-               docker-compose up -d --build'
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/ubuntu/youtube-converter
+            if [ ! -d .git ]; then
+              git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git .
+            fi
+            git fetch
+            git reset --hard origin/main
+            docker-compose down
+            docker system prune -af --volumes
+            docker-compose up -d --build
