@@ -3,7 +3,6 @@ import logging
 import markdown2
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.preprocessing import normalize
 from sentence_transformers import SentenceTransformer
 
 class OutputGenerator:
@@ -23,27 +22,15 @@ class OutputGenerator:
             raise
 
     def _prepare_content(self, data):
-        # Кодирование текстовых и графических эмбеддингов
         text_embeddings = self.text_model.encode([s['text'] for s in data['segments']])
-        frame_embeddings = [f['embedding'] for f in data['frames'] if f['embedding'] is not None]
-        
-        # Нормализация эмбеддингов
-        text_embeddings = normalize(text_embeddings)
-        frame_embeddings = normalize(frame_embeddings)
-        
-        # Безопасное сравнение с учетом количества эмбеддингов
-        if not frame_embeddings:
-            frame_embeddings = np.zeros((1, text_embeddings.shape[1]))
+        frame_embeddings = [f['embedding'] for f in data['frames']]
         
         similarity_matrix = cosine_similarity(text_embeddings, frame_embeddings)
         
         sections = []
         for i, segment in enumerate(data['segments']):
-            if frame_embeddings.size > 0:
-                best_frame_idx = np.argmax(similarity_matrix[i])
-                best_frame = data['frames'][best_frame_idx]
-            else:
-                best_frame = data['frames'][0] if data['frames'] else None
+            best_frame_idx = np.argmax(similarity_matrix[i])
+            best_frame = data['frames'][best_frame_idx]
             
             sections.append({
                 'text': segment['text'],
@@ -63,8 +50,7 @@ class OutputGenerator:
             f.write(f"# {content['title']}\n\n")
             for section in content['sections']:
                 f.write(f"## Время: {section['time']:.1f} сек\n")
-                if section['frame']:
-                    f.write(f"![{section['frame']['description']}]({section['frame']['path']})\n")
+                f.write(f"![{section['frame']['description']}]({section['frame']['path']})\n")
                 f.write(f"{section['text']}\n\n")
         
         return output_path

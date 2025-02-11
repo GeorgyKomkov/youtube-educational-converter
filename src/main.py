@@ -4,175 +4,70 @@ from src.audio_extractor import AudioExtractor
 from src.transcription_manager import TranscriptionManager
 from src.frame_processor import FrameProcessor
 from src.output_generator import OutputGenerator
+from src.video_converter import VideoConverter
 import os
-import logging
-
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+import yaml
 
 app = Flask(__name__)
 
+# Загрузка конфигурации из YAML
+with open('config/config.yaml', 'r', encoding='utf-8') as f:
+    config = yaml.safe_load(f)
+
+# Создание объекта VideoConverter
+converter = VideoConverter(config)  # <-- Эта строка обязательна!
+
+# Получаем порт из переменных окружения
 PORT = int(os.getenv("PORT", 10000))
 
-class VideoConverter:
-    def __init__(self, config):
-        self.config = config
-        self.downloader = VideoDownloader(config['temp_dir'])
-        self.audio_extractor = AudioExtractor(config['temp_dir'])
-        self.transcriber = TranscriptionManager(config['transcription'])
-        self.frame_processor = FrameProcessor(
-            config['output_dir'],
-            max_frames=config['video_processing']['max_frames'],
-            mode=config['video_processing']['frame_mode'],
-            blip_enabled=config['blip']['enabled']
-        )
-        self.output_generator = OutputGenerator(config['output_dir'])
-
-    def convert(self, url):
-        try:
-            video_path, title = self.downloader.download(url)
-            audio_path = self.audio_extractor.extract(video_path)
-            
-            segments = self.transcriber.transcribe(audio_path)
-            frames = self.frame_processor.process(video_path)
-            
-            result = self.output_generator.generate({
-                'title': title,
-                'segments': segments,
-                'frames': frames
-            })
-            
-            return result
-        except Exception as e:
-            logger.error(f"Error during conversion: {str(e)}")
-            raise
-
-converter = VideoConverter({
-    "temp_dir": "temp/",
-    "output_dir": "output/",
-    "transcription": {"model": "base"},
-    "video_processing": {"max_frames": 50, "frame_mode": "interval"},
-    "blip": {"enabled": False}
-})
-
+# Добавляем HTML форму здесь (ПЕРЕД существующим роутом /convert)
 @app.route('/')
 def home():
     return '''
-    <!DOCTYPE html>
     <html>
-    <head>
-        <title>YouTube Video Converter</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                max-width: 800px;
-                margin: 20px auto;
-                padding: 0 20px;
-            }
-            .form-container {
-                background: #f5f5f5;
-                padding: 20px;
-                border-radius: 5px;
-            }
-            input[type="text"] {
-                width: 100%;
-                padding: 10px;
-                margin: 10px 0;
-                border: 1px solid #ddd;
-                border-radius: 4px;
-            }
-            button {
-                background: #4CAF50;
-                color: white;
-                padding: 10px 20px;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-            }
-            button:hover {
-                background: #45a049;
-            }
-            #result {
-                margin-top: 20px;
-                padding: 10px;
-            }
-        </style>
-    </head>
     <body>
-        <h1>YouTube Video to Educational Textbook Converter</h1>
-        <div class="form-container">
-            <form id="convertForm">
-                <input type="text" id="url" name="url" placeholder="Введите URL видео с YouTube" required>
-                <button type="submit">Конвертировать</button>
-            </form>
-        </div>
+        <form id="convertForm">
+            <input type="text" name="url" placeholder="YouTube URL" required>
+            <button type="submit">Convert</button>
+        </form>
         <div id="result"></div>
 
         <script>
-            document.getElementById('convertForm').addEventListener('submit', async (e) => {
+            document.getElementById('convertForm').onsubmit = function(e) {
                 e.preventDefault();
-                const resultDiv = document.getElementById('result');
-                resultDiv.textContent = 'Начинаем конвертацию...';
                 
-                try {
-                    const response = await fetch('/convert', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            url: document.getElementById('url').value
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    if (response.ok) {
-                        resultDiv.textContent = 'Конвертация успешно завершена!';
-                    } else {
-                        resultDiv.textContent = `Ошибка: ${data.error || 'Что-то пошло не так'}`;
-                    }
-                } catch (error) {
-                    resultDiv.textContent = `Ошибка: ${error.message}`;
-                }
-            });
+                const url = document.querySelector('input[name="url"]').value;
+                
+                fetch('/convert', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: url })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('result').innerText = JSON.stringify(data, null, 2);
+                })
+                .catch(error => {
+                    document.getElementById('result').innerText = 'Error: ' + error;
+                });
+            };
         </script>
     </body>
     </html>
     '''
 
+# Обработчик конвертации
 @app.route('/convert', methods=['POST'])
 def convert_video():
-    try:
-        data = request.json
-        if not data:
-            return jsonify({"error": "Invalid JSON data"}), 400
-        
-        url = data.get("url")
-        if not url:
-            return jsonify({"error": "URL is required"}), 400
-        
-        if not url.startswith(('http://', 'https://', 'www.')):
-            return jsonify({"error": "Invalid URL format"}), 400
-        
-        result = converter.convert(url)
-        return jsonify({"success": True, "result": result})
+    data = request.json
+    url = data.get("url")
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
     
-    except Exception as e:
-        logger.error(f"Error processing request: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-@app.errorhandler(Exception)
-def handle_error(e):
-    logger.error(f"Unhandled error: {str(e)}")
-    return jsonify({"error": "Internal server error"}), 500
+    result = converter.convert(url)
+    return jsonify(result)
 
 if __name__ == "__main__":
-    # Создаем необходимые директории
-    os.makedirs("temp", exist_ok=True)
-    os.makedirs("output", exist_ok=True)
-    
     app.run(host="0.0.0.0", port=PORT, debug=False)

@@ -1,17 +1,12 @@
 import torch
 import whisper
 import logging
-import numpy as np
-from sentence_transformers import SentenceTransformer
 
 class TranscriptionManager:
     def __init__(self, use_gpu=True, model_size='medium'):
         self.use_gpu = use_gpu and torch.cuda.is_available()
         self.model_size = model_size
         self.logger = logging.getLogger(__name__)
-        
-        # Модель для семантического сравнения
-        self.similarity_model = SentenceTransformer('all-MiniLM-L6-v2')
 
     def transcribe(self, audio_path):
         try:
@@ -41,8 +36,8 @@ class TranscriptionManager:
             self.logger.error(f"Ошибка транскрибации: {e}")
             raise
 
-    def _process_segments(self, segments, min_duration=2.0, max_gap=5.0):
-        """Умное объединение сегментов с учетом смысловой связности"""
+    def _process_segments(self, segments, min_duration=2.0):
+        """Объединение коротких сегментов"""
         processed = []
         current = None
         
@@ -50,26 +45,16 @@ class TranscriptionManager:
             if not current:
                 current = seg.copy()
                 continue
-            
+                
             time_gap = seg['start'] - current['end']
-            similar_context = self._check_semantic_similarity(current['text'], seg['text'])
-            
-            if time_gap < max_gap and similar_context:
+            if time_gap < min_duration:
                 current['text'] += ' ' + seg['text'].strip()
                 current['end'] = seg['end']
             else:
                 processed.append(current)
                 current = seg.copy()
-        
+                
         if current:
             processed.append(current)
             
         return processed
-
-    def _check_semantic_similarity(self, text1, text2):
-        """Проверка семантической близости текстов"""
-        embeddings = self.similarity_model.encode([text1, text2])
-        similarity = np.dot(embeddings[0], embeddings[1]) / (
-            np.linalg.norm(embeddings[0]) * np.linalg.norm(embeddings[1])
-        )
-        return similarity > 0.7  # Порог семантической близости
