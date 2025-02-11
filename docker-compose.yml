@@ -4,8 +4,14 @@ services:
   app:
     build: .
     ports:
-      - "5000:5000"  # Хост:Контейнер
+      - "8080:8080"  # Изменено на 8080
     environment:
-      - PORT=5000
+      - PORT=8080
     volumes:
       - ./output:/app/output  # Сохраняем результаты
+    deploy:
+      resources:
+        limits:
+          memory: 400M
+        reservations:
+          memory: 200M
