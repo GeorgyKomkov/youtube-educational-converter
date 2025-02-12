@@ -1,9 +1,9 @@
 import os
-from .video_downloader import VideoDownloader
-from .audio_extractor import AudioExtractor
-from .transcription_manager import TranscriptionManager
-from .frame_processor import FrameProcessor
-from .output_generator import OutputGenerator
+from src.video_downloader import VideoDownloader
+from src.audio_extractor import AudioExtractor
+from src.transcription_manager import TranscriptionManager
+from src.frame_processor import FrameProcessor
+from src.output_generator import OutputGenerator
 
 class VideoConverter:
     def __init__(self, config):
