@@ -1,4 +1,5 @@
 #!/bin/bash
+export PYTHONPATH="/app:$PYTHONPATH"
 PORT=${PORT:-8080}
 echo "Запуск приложения на порту $PORT..."
 
