@@ -44,3 +44,6 @@ jobs:
             docker-compose down
             docker system prune -af --volumes
             docker-compose up -d --build
+            
+            # Запуск Celery-воркера после деплоя
+            docker-compose exec -d app celery -A celery worker --loglevel=info

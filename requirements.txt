@@ -14,3 +14,5 @@ Pillow
 flask
 gunicorn==20.1.0
 PyYAML==6.0.1
+celery
+redis

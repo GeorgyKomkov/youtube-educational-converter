@@ -4,17 +4,32 @@ services:
   app:
     build: .
     ports:
-      - "8080:8080"  # Изменено на 8080
+      - "8080:8080"
     environment:
       - PORT=8080
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       - ./output:/app/output  # Сохраняем результаты
       - ./cache:/app/cache
       - ./torch:/app/torch
-    deploy:
-      resources:
-        limits:
-          memory: 400M
-        reservations:
-          memory: 200M
+    depends_on:
+      - redis
+      - celery
+    restart: unless-stopped
+
+  redis:
+    image: redis:latest
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  celery:
+    build: .
+    command: celery -A celery worker --loglevel=info
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
     restart: unless-stopped

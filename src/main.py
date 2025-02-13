@@ -1,14 +1,16 @@
 import os
 import yaml
 import logging
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
 from werkzeug.exceptions import HTTPException
 from src.video_downloader import VideoDownloader
 from src.audio_extractor import AudioExtractor
 from src.transcription_manager import TranscriptionManager
 from src.frame_processor import FrameProcessor
 from src.output_generator import OutputGenerator
-from video_converter import VideoConverter
+from src.video_converter import VideoConverter
+from sentence_transformers import SentenceTransformer
+import whisper
 
 # Настройка логирования
 logging.basicConfig(
@@ -21,9 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__, 
-            template_folder='templates', 
-            static_folder='static')
+app = Flask(__name__)
 
 # Загрузка конфигурации
 try:
@@ -33,13 +33,15 @@ except Exception as e:
     logger.critical(f"Ошибка загрузки конфигурации: {e}")
     config = {}
 
-# Создание объекта VideoConverter
-converter = VideoConverter(config)
+# Кешируем модели (Whisper и SentenceTransformer)
+logger.info("Загрузка моделей...")
+whisper_model = whisper.load_model(config.get('transcription', {}).get('model', 'base'))
+text_model = SentenceTransformer('all-MiniLM-L6-v2')
+logger.info("Модели успешно загружены.")
 
-# Получаем порт из переменных окружения
-PORT = int(os.getenv("PORT", 10000))
+# Создаём объект VideoConverter, передавая кешированные модели
+converter = VideoConverter(config, whisper_model, text_model)
 
-# Добавляем HTML форму здесь (ПЕРЕД существующим роутом /convert)
 @app.route('/')
 def home():
     return '''
@@ -77,7 +79,6 @@ def home():
     </html>
     '''
 
-# Обработчик конвертации
 @app.route('/convert', methods=['POST'])
 def convert_video():
     try:
@@ -94,4 +95,4 @@ def convert_video():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=PORT, debug=False)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)), debug=False)

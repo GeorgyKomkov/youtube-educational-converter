@@ -1,6 +1,7 @@
 import os
 import logging
 import markdown2
+import pdfkit
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
@@ -13,15 +14,18 @@ class OutputGenerator:
         os.makedirs(output_dir, exist_ok=True)
 
     def generate(self, data):
+        """Создаёт Markdown и PDF-файл на основе транскрибации и ключевых кадров"""
         try:
             content = self._prepare_content(data)
-            output_path = self._generate_markdown(content)
-            return output_path
+            md_path = self._generate_markdown(content)
+            pdf_path = self._generate_pdf(md_path)
+            return {"markdown": md_path, "pdf": pdf_path}
         except Exception as e:
-            self.logger.error(f"Ошибка генерации: {e}")
+            self.logger.error(f"Ошибка генерации выходного файла: {e}")
             raise
 
     def _prepare_content(self, data):
+        """Связывает текстовые сегменты с изображениями по смыслу"""
         text_embeddings = self.text_model.encode([s['text'] for s in data['segments']])
         frame_embeddings = [f['embedding'] for f in data['frames']]
         
@@ -44,6 +48,7 @@ class OutputGenerator:
         }
 
     def _generate_markdown(self, content):
+        """Создаёт Markdown-файл"""
         output_path = os.path.join(self.output_dir, f"{content['title']}.md")
         
         with open(output_path, 'w', encoding='utf-8') as f:
@@ -54,3 +59,14 @@ class OutputGenerator:
                 f.write(f"{section['text']}\n\n")
         
         return output_path
+
+    def _generate_pdf(self, md_path):
+        """Конвертирует Markdown в PDF"""
+        try:
+            html = markdown2.markdown_path(md_path)
+            pdf_path = md_path.replace('.md', '.pdf')
+            pdfkit.from_string(html, pdf_path)
+            return pdf_path
+        except Exception as e:
+            self.logger.error(f"Ошибка при генерации PDF: {e}")
+            raise

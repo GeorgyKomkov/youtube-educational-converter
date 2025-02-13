@@ -8,27 +8,18 @@ class TranscriptionManager:
         self.model_size = model_size
         self.logger = logging.getLogger(__name__)
 
+        # Загружаем модель один раз при старте
+        device = 'cuda' if self.use_gpu else 'cpu'
+        self.logger.info(f"Загрузка модели Whisper ({model_size}) на {device}...")
+        self.model = whisper.load_model(self.model_size, device=device)
+        self.logger.info("Модель загружена.")
+
     def transcribe(self, audio_path):
         try:
-            # Выбор устройства
-            device = 'cuda' if self.use_gpu else 'cpu'
-            self.logger.info(f"Транскрибация на устройстве: {device}")
-            
-            # Загрузка модели
-            model = whisper.load_model(self.model_size, device=device)
-            
-            # Транскрибация
-            result = model.transcribe(
-                audio_path, 
-                verbose=False
-            )
-            
-            # Обработка сегментов
+            self.logger.info(f"Транскрибация файла: {audio_path}")
+            result = self.model.transcribe(audio_path, verbose=False)
+
             segments = self._process_segments(result['segments'])
-            
-            if not segments:
-                self.logger.warning("Транскрипция не выявила текстовых сегментов")
-            
             self.logger.info(f"Транскрибация завершена. Сегментов: {len(segments)}")
             return segments
         
@@ -37,7 +28,6 @@ class TranscriptionManager:
             raise
 
     def _process_segments(self, segments, min_duration=2.0):
-        """Объединение коротких сегментов"""
         processed = []
         current = None
         

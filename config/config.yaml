@@ -13,3 +13,13 @@ video_processing:
 
 blip:
   enabled: false  # Включить генерацию описаний кадров через BLIP
+
+parallel_processing:
+  enabled: true  # Включить параллельную обработку видео и аудио
+  max_workers: 2  # Количество потоков (можно увеличить на мощных серверах)
+
+celery:
+  enabled: true  # Включить Celery для фоновой обработки
+  broker_url: "redis://redis:6379/0"
+  backend_url: "redis://redis:6379/0"
+

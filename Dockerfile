@@ -6,6 +6,7 @@ WORKDIR /app
 # Установка необходимых пакетов для сборки
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    wkhtmltopdf \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем только requirements.txt
@@ -21,9 +22,8 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Копируем ffmpeg
-COPY --from=builder /usr/bin/ffmpeg /usr/bin/ffmpeg
-COPY --from=builder /usr/bin/ffprobe /usr/bin/ffprobe
+# Устанавливаем ffmpeg и wkhtmltopdf в финальном контейнере
+RUN apt-get update && apt-get install -y ffmpeg wkhtmltopdf && rm -rf /var/lib/apt/lists/*
 
 # Копируем виртуальное окружение
 COPY --from=builder /opt/venv /opt/venv
@@ -32,10 +32,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Копируем файлы проекта
 COPY . .
 
+# Копируем start.sh отдельно и делаем его исполняемым
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
 # Создание необходимых директорий
-RUN mkdir -p output cache torch && \
-    chmod 777 output cache torch && \
-    chmod +x start.sh
+RUN mkdir -p output cache torch && chmod 777 output cache torch
 
 # Запуск приложения
-CMD ["./start.sh"]
+CMD ["/bin/bash", "/app/start.sh"]
