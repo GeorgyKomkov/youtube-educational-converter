@@ -1,38 +1,32 @@
-# Используем CUDA-совместимый базовый образ для поддержки GPU
-FROM pytorch/pytorch:2.0.0-cuda11.7-cudnn8-runtime
+# Используем официальный образ Python 3.10
+FROM python:3.10
 
+# Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Установка системных зависимостей
+# Копируем файл зависимостей
+COPY requirements.txt . 
+
+# Устанавливаем системные зависимости и очищаем кеш APT
 RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    git \
-    python3-pip \
-    && rm -rf /var/lib/apt/lists/*
+    libsndfile1 ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
 
-# Копируем requirements первым для использования кеша Docker
-COPY requirements.txt .
-
-# Устанавливаем зависимости Python
+# Устанавливаем Python-зависимости без кеширования
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Создаем необходимые директории
-RUN mkdir -p output cache torch config
+# Удаляем кеши pip и временные файлы
+RUN apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Копируем конфигурационные файлы первыми
-COPY config/config.yaml config/
+# Устанавливаем `transformers` и `whisper` (без кеша)
+RUN pip install --no-cache-dir transformers openai-whisper
 
-# Копируем остальные файлы приложения
+# Копируем весь проект в контейнер
 COPY . .
 
-# Устанавливаем переменные окружения
-ENV PYTHONPATH=/app
-ENV TORCH_HOME=/app/torch
-ENV TRANSFORMERS_CACHE=/app/cache
-ENV HF_HOME=/app/cache
-
-# Делаем start.sh исполняемым
+# Делаем стартовый скрипт исполняемым
 RUN chmod +x start.sh
 
-# Команда по умолчанию (будет переопределена в docker-compose)
+# Запускаем приложение
 CMD ["./start.sh"]
