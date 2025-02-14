@@ -15,7 +15,7 @@ services:
       - ./cache:/app/cache
       - ./torch:/app/torch
       - ./config:/app/config  # ✅ Исправлен путь (монтируем всю папку, а не только файл)
-    command: gunicorn --bind 0.0.0.0:8080 --workers 1 --timeout 900 main:app
+    command: gunicorn --bind 0.0.0.0:8080 --workers 1 --timeout 2000 main:app
     depends_on:
       - redis
     restart: unless-stopped

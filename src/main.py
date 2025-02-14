@@ -12,12 +12,16 @@ from src.video_converter import VideoConverter
 from sentence_transformers import SentenceTransformer
 import whisper
 
-# Настройка логирования
+# ✅ Создаём директорию логов, если её нет
+LOG_DIR = "/app/logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# ✅ Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('/app/logs/app.log'),
+        logging.FileHandler(f"{LOG_DIR}/app.log"),
         logging.StreamHandler()
     ]
 )
