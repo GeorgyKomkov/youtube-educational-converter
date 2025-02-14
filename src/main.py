@@ -25,22 +25,35 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Загрузка конфигурации
+# ✅ Исправленный путь к `config.yaml`
+CONFIG_PATH = "/app/config/config.yaml"
+
+# ✅ Загрузка конфигурации
 try:
-    with open('config/config.yaml', 'r', encoding='utf-8') as f:
+    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
+    logger.info("Конфигурация успешно загружена.")
 except Exception as e:
     logger.critical(f"Ошибка загрузки конфигурации: {e}")
     config = {}
 
-# Кешируем модели (Whisper и SentenceTransformer)
+# ✅ Кешируем модели (Whisper и SentenceTransformer)
 logger.info("Загрузка моделей...")
-whisper_model = whisper.load_model(config.get('transcription', {}).get('model', 'base'))
-text_model = SentenceTransformer('all-MiniLM-L6-v2')
-logger.info("Модели успешно загружены.")
+try:
+    whisper_model = whisper.load_model(config.get('transcription', {}).get('model', 'base'))
+    text_model = SentenceTransformer('all-MiniLM-L6-v2')
+    logger.info("Модели успешно загружены.")
+except Exception as e:
+    logger.critical(f"Ошибка загрузки моделей: {e}")
+    whisper_model = None
+    text_model = None
 
-# Создаём объект VideoConverter, передавая кешированные модели
-converter = VideoConverter(config, whisper_model, text_model)
+# ✅ Создаём объект VideoConverter, передавая кешированные модели
+if whisper_model and text_model:
+    converter = VideoConverter(config, whisper_model, text_model)
+else:
+    logger.critical("Ошибка: модели не загружены. Конвертация невозможна.")
+    converter = None
 
 @app.route('/')
 def home():
@@ -82,6 +95,9 @@ def home():
 @app.route('/convert', methods=['POST'])
 def convert_video():
     try:
+        if not converter:
+            return jsonify({"error": "Сервер не готов. Модели не загружены."}), 500
+
         data = request.json
         url = data.get("url")
         if not url:
@@ -91,7 +107,7 @@ def convert_video():
         return jsonify(result)
     
     except Exception as e:
-        logger.error(f"Error during conversion: {e}")
+        logger.error(f"Ошибка при конвертации: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
