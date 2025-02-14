@@ -9,12 +9,12 @@ services:
       - PORT=8080
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - PYTHONPATH=/app/src  # Добавлено для корректного импорта модулей
+      - PYTHONPATH=/app/src
     volumes:
       - ./output:/app/output
       - ./cache:/app/cache
       - ./torch:/app/torch
-      - ./config.yaml:/app/config/config.yaml  # Добавлено
+      - ./config.yaml:/app/config.yaml  # Правильное монтирование файла
     command: gunicorn --bind 0.0.0.0:8080 main:app
     depends_on:
       - redis
@@ -28,7 +28,7 @@ services:
 
   celery:
     build: .
-    command: celery -A celery_app worker --loglevel=info  # Обновлено: теперь `celery_app`
+    command: celery -A celery_app worker --loglevel=info
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -36,7 +36,7 @@ services:
       - ./output:/app/output
       - ./cache:/app/cache
       - ./torch:/app/torch
-      - ./config.yaml:/app/config/config.yaml  # Добавлено
+      - ./config.yaml:/app/config.yaml  # Правильное монтирование файла
     depends_on:
       - redis
     restart: unless-stopped
