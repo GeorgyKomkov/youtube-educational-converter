@@ -1,50 +1,50 @@
-name: Deploy to Production
+version: '3.8'
 
-on:
-  push:
-    branches: [ main ]
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - PYTHONPATH=/app/src
+    volumes:
+      - ./output:/app/output
+      - ./cache:/app/cache
+      - ./torch:/app/torch
+      - ./config:/app/config
+    command: gunicorn --bind 0.0.0.0:8080 --workers 1 --timeout 2000 --limit-request-line 8190 --limit-request-field_size 0 main:app
+    deploy:
+      resources:
+        limits:
+          memory: 500MB  # Ограничиваем Flask до 500MB
+    depends_on:
+      - redis
+    restart: unless-stopped
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      
-      - name: Debug secrets
-        run: |
-          if [ -n "${{ secrets.SSH_HOST }}" ]; then
-            echo "SSH_HOST is set"
-          else
-            echo "SSH_HOST is not set"
-          fi
-          if [ -n "${{ secrets.SSH_USER }}" ]; then
-            echo "SSH_USER is set"
-          else
-            echo "SSH_USER is not set"
-          fi
-          if [ -n "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
-            echo "SSH_PRIVATE_KEY is set"
-          else
-            echo "SSH_PRIVATE_KEY is not set"
-          fi
+  celery:
+    build: .
+    command: celery -A celery_app worker --loglevel=info
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./output:/app/output
+      - ./cache:/app/cache
+      - ./torch:/app/torch
+      - ./config:/app/config
+    deploy:
+      resources:
+        limits:
+          memory: 250MB  # Ограничиваем Celery до 250MB
+    depends_on:
+      - redis
+    restart: unless-stopped
 
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd /home/ubuntu/youtube-converter
-            if [ ! -d .git ]; then
-              git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git .
-            fi
-            git fetch
-            git reset --hard origin/main
-            docker-compose down
-            docker system prune -af --volumes
-            docker-compose up -d --build
-            
-            # Добавляем задержку перед запуском Celery
-            sleep 10
-            docker-compose exec -d app celery -A celery_app worker --loglevel=info
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
