@@ -1,4 +1,5 @@
-from celery_app import Celery
+from celery import Celery
+
 import os
 import yaml
 from src.video_converter import VideoConverter
@@ -19,6 +20,7 @@ celery = Celery(
     broker=config['celery']['broker_url'],
     backend=config['celery']['backend_url']
 )
+
 
 # Кешируем модели
 print("Загрузка моделей для Celery...")
