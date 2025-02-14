@@ -22,4 +22,6 @@ celery:
   enabled: true  # Включить Celery для фоновой обработки
   broker_url: "redis://redis:6379/0"
   backend_url: "redis://redis:6379/0"
-
+  
+volumes:
+  - ./config.yaml:/app/config/config.yaml

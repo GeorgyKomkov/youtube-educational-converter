@@ -1,4 +1,4 @@
-from celery import Celery
+from celery_app import Celery
 import os
 import yaml
 from src.video_converter import VideoConverter

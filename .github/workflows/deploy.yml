@@ -27,7 +27,7 @@ jobs:
           else
             echo "SSH_PRIVATE_KEY is not set"
           fi
-      
+
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -45,5 +45,6 @@ jobs:
             docker system prune -af --volumes
             docker-compose up -d --build
             
-            # Запуск Celery-воркера после деплоя
-            docker-compose exec -d app celery -A celery worker --loglevel=info
+            # Добавляем задержку перед запуском Celery
+            sleep 10
+            docker-compose exec -d app celery -A celery_app worker --loglevel=info

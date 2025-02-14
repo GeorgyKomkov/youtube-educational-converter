@@ -1,43 +1,38 @@
-# Этап сборки
-FROM python:3.9-slim as builder
+# Используем CUDA-совместимый базовый образ для поддержки GPU
+FROM pytorch/pytorch:2.0.0-cuda11.7-cudnn8-runtime
 
 WORKDIR /app
 
-# Установка необходимых пакетов для сборки
+# Установка системных зависимостей
 RUN apt-get update && apt-get install -y \
     ffmpeg \
-    wkhtmltopdf \
+    git \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# Копируем только requirements.txt
+# Копируем requirements первым для использования кеша Docker
 COPY requirements.txt .
 
-# Устанавливаем зависимости в виртуальное окружение
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Устанавливаем зависимости Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Финальный этап
-FROM python:3.9-slim
+# Создаем необходимые директории
+RUN mkdir -p output cache torch config
 
-WORKDIR /app
+# Копируем конфигурационные файлы первыми
+COPY config/config.yaml config/
 
-# Устанавливаем ffmpeg и wkhtmltopdf в финальном контейнере
-RUN apt-get update && apt-get install -y ffmpeg wkhtmltopdf && rm -rf /var/lib/apt/lists/*
-
-# Копируем виртуальное окружение
-COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Копируем файлы проекта
+# Копируем остальные файлы приложения
 COPY . .
 
-# Копируем start.sh отдельно и делаем его исполняемым
-COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh
+# Устанавливаем переменные окружения
+ENV PYTHONPATH=/app
+ENV TORCH_HOME=/app/torch
+ENV TRANSFORMERS_CACHE=/app/cache
+ENV HF_HOME=/app/cache
 
-# Создание необходимых директорий
-RUN mkdir -p output cache torch && chmod 777 output cache torch
+# Делаем start.sh исполняемым
+RUN chmod +x start.sh
 
-# Запуск приложения
-CMD ["/bin/bash", "/app/start.sh"]
+# Команда по умолчанию (будет переопределена в docker-compose)
+CMD ["./start.sh"]
