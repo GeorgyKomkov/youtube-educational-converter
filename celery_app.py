@@ -8,6 +8,7 @@ import whisper
 
 # Загрузка конфигурации
 try:
+    
     with open('config/config.yaml', 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
 except Exception as e:
@@ -29,7 +30,8 @@ text_model = SentenceTransformer('all-MiniLM-L6-v2')
 print("Модели загружены.")
 
 # Создаём объект VideoConverter с кешированными моделями
-video_converter = VideoConverter(config, whisper_model, text_model)
+video_converter = VideoConverter(config)
+
 
 @celery.task
 def process_video(url):
