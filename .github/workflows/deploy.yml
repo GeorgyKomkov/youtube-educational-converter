@@ -1,50 +1,39 @@
-version: '3.8'
+name: Deploy to Server
 
-services:
-  app:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      - PORT=8080
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - PYTHONPATH=/app/src
-    volumes:
-      - ./output:/app/output
-      - ./cache:/app/cache
-      - ./torch:/app/torch
-      - ./config:/app/config
-    command: gunicorn --bind 0.0.0.0:8080 --workers 1 --timeout 2000 --limit-request-line 8190 --limit-request-field_size 0 main:app
-    deploy:
-      resources:
-        limits:
-          memory: 500MB  # Ограничиваем Flask до 500MB
-    depends_on:
-      - redis
-    restart: unless-stopped
+on:
+  push:
+    branches:
+      - main  # Запуск при пуше в main
+  workflow_dispatch:  # Позволяет запускать вручную
 
-  celery:
-    build: .
-    command: celery -A celery_app worker --loglevel=info
-    environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    volumes:
-      - ./output:/app/output
-      - ./cache:/app/cache
-      - ./torch:/app/torch
-      - ./config:/app/config
-    deploy:
-      resources:
-        limits:
-          memory: 250MB  # Ограничиваем Celery до 250MB
-    depends_on:
-      - redis
-    restart: unless-stopped
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-  redis:
-    image: redis:latest
-    ports:
-      - "6379:6379"
-    restart: unless-stopped
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build and Push Docker Image
+        run: |
+          docker build -t youtube-converter-app .
+          docker tag youtube-converter-app your-dockerhub-username/youtube-converter-app:latest
+          docker push your-dockerhub-username/youtube-converter-app:latest
+
+      - name: Deploy to Server
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          echo "$SSH_PRIVATE_KEY" > private_key && chmod 600 private_key
+          ssh -i private_key -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP << 'EOF'
+            cd /path/to/your/project  # Убедись, что здесь правильный путь до docker-compose.yml
+            docker pull your-dockerhub-username/youtube-converter-app:latest
+            docker-compose down
+            docker-compose up -d
+            exit
+          EOF
