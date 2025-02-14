@@ -15,10 +15,11 @@ services:
       - ./cache:/app/cache
       - ./torch:/app/torch
       - ./config:/app/config  # ✅ Исправлен путь (монтируем всю папку, а не только файл)
-    command: gunicorn --bind 0.0.0.0:8080 --workers 1 --timeout 2000 main:app
+    command: gunicorn --bind 0.0.0.0:8080 --workers 1 --timeout 1800 --limit-request-line 8190 --limit-request-field_size 8190 main:app
     depends_on:
       - redis
     restart: unless-stopped
+    mem_limit: 750m  # ✅ Ограничение по памяти, чтобы сервер не перегружался
 
   redis:
     image: redis:latest
@@ -40,3 +41,4 @@ services:
     depends_on:
       - redis
     restart: unless-stopped
+    mem_limit: 750m  # ✅ Ограничение по памяти для Celery
