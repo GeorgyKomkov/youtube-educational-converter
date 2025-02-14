@@ -3,11 +3,11 @@ temp_dir: "temp/"  # Директория для временных файлов
 output_dir: "output/"  # Директория для результатов
 
 transcription:
-  model: "base"  # Модель Whisper (base, small, medium)
+  model: "tiny"  # Модель Whisper (base, small, medium)
   use_gpu: true  # Использовать GPU для транскрибации
 
 video_processing:
-  max_frames: 50  # Максимальное число кадров
+  max_frames: 20  # Максимальное число кадров
   frame_mode: "interval"  # Режим выбора кадров (scenes или interval)
   frame_interval: 30  # Интервал в секундах (для режима interval)
 
@@ -16,7 +16,7 @@ blip:
 
 parallel_processing:
   enabled: true  # Включить параллельную обработку видео и аудио
-  max_workers: 2  # Количество потоков (можно увеличить на мощных серверах)
+  max_workers: 1  # Количество потоков (можно увеличить на мощных серверах)
 
 celery:
   enabled: true  # Включить Celery для фоновой обработки
