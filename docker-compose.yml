@@ -14,7 +14,7 @@ services:
       - ./output:/app/output
       - ./cache:/app/cache
       - ./torch:/app/torch
-      - ./config/config.yaml:/app/config.yaml   # Правильное монтирование файла
+      - ./config:/app/config  # ✅ Исправлен путь (монтируем всю папку, а не только файл)
     command: gunicorn --bind 0.0.0.0:8080 main:app
     depends_on:
       - redis
@@ -36,7 +36,7 @@ services:
       - ./output:/app/output
       - ./cache:/app/cache
       - ./torch:/app/torch
-      - ./config/config.yaml:/app/config.yaml  
+      - ./config:/app/config  # ✅ Теперь путь одинаковый для всех сервисов
     depends_on:
       - redis
     restart: unless-stopped
