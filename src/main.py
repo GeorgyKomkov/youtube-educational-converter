@@ -14,10 +14,10 @@ import whisper
 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.INFO, 
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('app.log'),
+        logging.FileHandler('/app/logs/app.log'),
         logging.StreamHandler()
     ]
 )
@@ -25,10 +25,8 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# ✅ Исправленный путь к `config.yaml`
+# ✅ Загружаем конфиг
 CONFIG_PATH = "/app/config/config.yaml"
-
-# ✅ Загрузка конфигурации
 try:
     with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
@@ -37,10 +35,15 @@ except Exception as e:
     logger.critical(f"Ошибка загрузки конфигурации: {e}")
     config = {}
 
-# ✅ Кешируем модели (Whisper и SentenceTransformer)
-logger.info("Загрузка моделей...")
+# ✅ Устанавливаем кеш моделей
+CACHE_DIR = config.get("model_cache", "/app/cache/models")
+os.environ["TRANSFORMERS_CACHE"] = CACHE_DIR
+os.environ["HF_HOME"] = CACHE_DIR
+logger.info(f"Используется кеш моделей: {CACHE_DIR}")
+
+# ✅ Загружаем модели
 try:
-    whisper_model = whisper.load_model(config.get('transcription', {}).get('model', 'base'))
+    whisper_model = whisper.load_model(config.get('transcription', {}).get('model', 'medium'))
     text_model = SentenceTransformer('all-MiniLM-L6-v2')
     logger.info("Модели успешно загружены.")
 except Exception as e:
@@ -48,7 +51,7 @@ except Exception as e:
     whisper_model = None
     text_model = None
 
-# ✅ Создаём объект VideoConverter, передавая кешированные модели
+# ✅ Создаём объект VideoConverter
 if whisper_model and text_model:
     converter = VideoConverter(config)
 else:
@@ -112,4 +115,3 @@ def convert_video():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)), threaded=False)
-

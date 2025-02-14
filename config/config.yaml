@@ -1,9 +1,12 @@
 # config/config.yaml
-temp_dir: "temp/"  # Директория для временных файлов
-output_dir: "output/"  # Директория для результатов
+temp_dir: "/app/temp/"  # Директория для временных файлов
+output_dir: "/app/output/"  # Директория для результатов
+
+# Директория кеша для моделей
+model_cache: "/app/cache/models"
 
 transcription:
-  model: "tiny"  # Модель Whisper (base, small, medium)
+  model: "medium"  # Модель Whisper (base, small, medium)
   use_gpu: true  # Использовать GPU для транскрибации
 
 video_processing:
