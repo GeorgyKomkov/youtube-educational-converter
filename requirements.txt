@@ -6,7 +6,7 @@ accelerate
 yt-dlp
 python-slugify
 opencv-python-headless
-whisper
+openai-whisper
 pdfkit
 markdown2
 tqdm
