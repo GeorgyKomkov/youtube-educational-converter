@@ -50,7 +50,7 @@ except Exception as e:
 
 # ✅ Создаём объект VideoConverter, передавая кешированные модели
 if whisper_model and text_model:
-    converter = VideoConverter(config, whisper_model, text_model)
+    converter = VideoConverter(config)
 else:
     logger.critical("Ошибка: модели не загружены. Конвертация невозможна.")
     converter = None
