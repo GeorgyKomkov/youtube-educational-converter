@@ -36,7 +36,7 @@ services:
       - ./output:/app/output
       - ./cache:/app/cache
       - ./torch:/app/torch
-      - ./config.yaml:/app/config.yaml  # Правильное монтирование файла
+      - ./config/config.yaml:/app/config.yaml  # Правильное монтирование файла
     depends_on:
       - redis
     restart: unless-stopped
