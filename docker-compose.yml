@@ -1,4 +1,4 @@
-version: '3'
+version: '3.8'
 
 services:
   app:
@@ -15,11 +15,12 @@ services:
       - ./cache:/app/cache
       - ./torch:/app/torch
       - ./config:/app/config
-    command: gunicorn --bind 0.0.0.0:8080 --workers 1 --worker-class gevent --timeout 1800 --limit-request-line 8190 --limit-request-field_size 8190 main:app
+    command: gunicorn --bind 0.0.0.0:8080 --workers 2 --worker-class gevent --timeout 300 --limit-request-line 8190 --limit-request-field_size 8190 main:app
     depends_on:
       - redis
     restart: unless-stopped
-    mem_limit: 600m  
+    mem_limit: 750m  # Увеличено, так как приложение падало по OOM
+    shm_size: '1gb'   # Добавлен общий объем памяти для контейнера
 
   redis:
     image: redis:latest
@@ -41,4 +42,5 @@ services:
     depends_on:
       - redis
     restart: unless-stopped
-    mem_limit: 750m  # ✅ Ограничение по памяти для Celery
+    mem_limit: 750m
+    shm_size: '1gb'   # Аналогично для Celery
