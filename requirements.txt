@@ -17,4 +17,6 @@ PyYAML==6.0.1
 celery
 redis
 numpy<2.0.0
+gevent>=1.4
+
 
