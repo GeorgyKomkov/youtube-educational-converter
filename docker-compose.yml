@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3.7'
 
 services:
   app:
@@ -7,40 +7,47 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - PYTHONPATH=/app/src
-    volumes:
-      - ./output:/app/output
-      - ./cache:/app/cache
-      - ./torch:/app/torch
-      - ./config:/app/config
-    command: gunicorn --bind 0.0.0.0:8080 --workers 2 --worker-class gevent --timeout 300 --limit-request-line 8190 --limit-request-field_size 8190 main:app
+    command: gunicorn --bind 0.0.0.0:8080 --workers=1 --timeout=300 main:app
+    restart: always
     depends_on:
       - redis
-    restart: unless-stopped
-    mem_limit: 750m  # Увеличено, так как приложение падало по OOM
-    shm_size: '1gb'   # Добавлен общий объем памяти для контейнера
+    mem_limit: 400m    # ⬅️ Ограничиваем потребление памяти Gunicorn
+    mem_reservation: 256m
 
   redis:
     image: redis:latest
-    restart: unless-stopped
+    restart: always
     ports:
       - "6379:6379"
+    mem_limit: 100m    # ⬅️ Ограничиваем Redis, чтобы он не съедал память
 
   celery:
     build: .
     command: celery -A celery_app worker --loglevel=info
-    environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    volumes:
-      - ./output:/app/output
-      - ./cache:/app/cache
-      - ./torch:/app/torch
-      - ./config:/app/config
     depends_on:
       - redis
-    restart: unless-stopped
-    mem_limit: 750m
-    shm_size: '1gb'   # Аналогично для Celery
+    restart: always
+    mem_limit: 400m    # ⬅️ Ограничиваем Celery, чтобы избежать OOM-Killer
+    mem_reservation: 256m
+    environment:
+      - C_FORCE_ROOT=true   # Чтобы Celery запускался под root (если нужно)
+
+  celery-beat:
+    build: .
+    command: celery -A celery_app beat --loglevel=info
+    depends_on:
+      - redis
+      - celery
+    restart: always
+    mem_limit: 100m
+    mem_reservation: 64m
+
+  worker:
+    build: .
+    command: celery -A celery_app worker --loglevel=info --concurrency=1
+    depends_on:
+      - redis
+      - celery
+    restart: always
+    mem_limit: 300m
+    mem_reservation: 128m
