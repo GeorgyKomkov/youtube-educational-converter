@@ -1,28 +1,52 @@
-# config/config.yaml
-temp_dir: "/app/temp/"
-output_dir: "/app/output/"
+version: '3.7'
 
-# Директория кеша для моделей
-model_cache: "/app/cache/models"
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+    command: gunicorn --bind 0.0.0.0:8080 --workers=1 --threads=1 --timeout=300 --max-requests=5 --max-requests-jitter=2 main:app
+    restart: always
+    depends_on:
+      - redis
+    mem_limit: 200m
+    mem_reservation: 150m
 
-transcription:
-  model: "tiny"  # ⬅️ Меняем с "base" на "tiny", чтобы уменьшить RAM
-  use_gpu: false
-  whisper_cache: false
+  redis:
+    image: redis:latest
+    restart: always
+    ports:
+      - "6379:6379"
+    mem_limit: 100m
 
-video_processing:
-  max_frames: 3  # ⬅️ Снижаем нагрузку, уменьшив количество кадров
-  frame_mode: "interval"
-  frame_interval: 30
+  celery:
+    build: .
+    command: celery -A celery_app worker --loglevel=info --concurrency=1
+    depends_on:
+      - redis
+    restart: always
+    mem_limit: 300m
+    mem_reservation: 200m
 
-blip:
-  enabled: false
+  celery-beat:
+    build: .
+    command: celery -A celery_app beat --loglevel=info
+    depends_on:
+      - redis
+      - celery
+    restart: always
+    mem_limit: 100m
+    mem_reservation: 64m
 
-parallel_processing:
-  enabled: true
-  max_workers: 1  # Ограничиваем число потоков
+  worker:
+    build: .
+    command: celery -A celery_app worker --loglevel=info --concurrency=1
+    depends_on:
+      - redis
+      - celery
+    restart: always
+    mem_limit: 300m
+    mem_reservation: 128m
 
-celery:
-  enabled: true
-  broker_url: "redis://redis:6379/0"
-  backend_url: "redis://redis:6379/0"
