@@ -1,27 +1,29 @@
 # config/config.yaml
-temp_dir: "/app/temp/"  # Директория для временных файлов
-output_dir: "/app/output/"  # Директория для результатов
+temp_dir: "/app/temp/"
+output_dir: "/app/output/"
 
 # Директория кеша для моделей
 model_cache: "/app/cache/models"
 
 transcription:
-  model: "base"  # Модель Whisper (base, small, medium)
-  use_gpu: false     # Использовать GPU для транскрибации
+  model: "base"  # Минимальная модель Whisper
+  use_gpu: false
+  whisper_cache: false  # Отключаем кеширование моделей Whisper
 
 video_processing:
-  max_frames: 20  # Максимальное число кадров
-  frame_mode: "interval"  # Режим выбора кадров (scenes или interval)
-  frame_interval: 30  # Интервал в секундах (для режима interval)
+  max_frames: 5  # Уменьшаем число кадров, чтобы снизить нагрузку
+  frame_mode: "interval"
+  frame_interval: 30
 
 blip:
-  enabled: false  # Включить генерацию описаний кадров через BLIP
+  enabled: false  # Отключаем BLIP для уменьшения нагрузки
 
 parallel_processing:
-  enabled: true  # Включить параллельную обработку видео и аудио
-  max_workers: 1  # Количество потоков (можно увеличить на мощных серверах)
+  enabled: true
+  max_workers: 1  # Ограничиваем число потоков
 
 celery:
-  enabled: true  # Включить Celery для фоновой обработки
+  enabled: true
   broker_url: "redis://redis:6379/0"
   backend_url: "redis://redis:6379/0"
+

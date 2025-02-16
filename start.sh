@@ -4,10 +4,11 @@ PORT=${PORT:-8080}
 echo "Запуск приложения на порту $PORT..."
 
 # Запускаем Flask-приложение
-cd /app/src && gunicorn --bind 0.0.0.0:$PORT main:app &
+cd /app/src && gunicorn --bind 0.0.0.0:$PORT --workers=1 --threads=1 main:app &
 
 # Запускаем Celery-воркер
-cd /app && celery -A celery worker --loglevel=info &
+cd /app && celery -A celery worker --loglevel=info --concurrency=1 &
 
 # Ожидание процессов
 wait
+

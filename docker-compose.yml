@@ -7,30 +7,28 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
-    command: gunicorn --bind 0.0.0.0:8080 --workers=1 --timeout=300 main:app
+    command: gunicorn --bind 0.0.0.0:8080 --workers=1 --threads=1 --timeout=300 main:app
     restart: always
     depends_on:
       - redis
-    mem_limit: 400m    # ⬅️ Ограничиваем потребление памяти Gunicorn
-    mem_reservation: 256m
+    mem_limit: 250m
+    mem_reservation: 200m
 
   redis:
     image: redis:latest
     restart: always
     ports:
       - "6379:6379"
-    mem_limit: 100m    # ⬅️ Ограничиваем Redis, чтобы он не съедал память
+    mem_limit: 100m
 
   celery:
     build: .
-    command: celery -A celery_app worker --loglevel=info
+    command: celery -A celery_app worker --loglevel=info --concurrency=1
     depends_on:
       - redis
     restart: always
-    mem_limit: 400m    # ⬅️ Ограничиваем Celery, чтобы избежать OOM-Killer
+    mem_limit: 400m
     mem_reservation: 256m
-    environment:
-      - C_FORCE_ROOT=true   # Чтобы Celery запускался под root (если нужно)
 
   celery-beat:
     build: .
