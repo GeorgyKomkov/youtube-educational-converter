@@ -7,14 +7,17 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
+      - PYTHONUNBUFFERED=1  # Для немедленного вывода логов
     volumes:
       - app_videos:/app/videos
       - app_output:/app/output
       - app_temp:/app/temp
       - app_cache:/app/cache/models
+      - ./client_secrets.json:/app/client_secrets.json
+      - ./api.txt:/app/api.txt
     restart: always
-    mem_limit: 512m  # Увеличил лимит памяти еще больше
-    mem_reservation: 256m
+    mem_limit: 1024m  # Увеличиваем лимит памяти
+    mem_reservation: 512m
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s

@@ -28,6 +28,17 @@ jobs:
             echo "SSH_PRIVATE_KEY is not set"
           fi
 
+      - name: Create credentials files
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/ubuntu/youtube-converter
+            echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
+            echo '${{ secrets.YOUTUBE_API_KEY }}' > api.txt
+
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -35,44 +46,20 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /home/ubuntu
-
-            # Проверяем, есть ли репозиторий, иначе клонируем
-            if [ ! -d "youtube-converter/.git" ]; then
-              git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git youtube-converter
-            fi
-
-            cd youtube-converter
-            git fetch --all
-            git reset --hard origin/main
-
-            echo "Stopping running containers..."
-            docker stop $(docker ps -q) || true
-            docker rm $(docker ps -aq) || true
-            docker network prune -f || true
-
-            echo "Cleaning up Docker system..."
-            docker system prune -af --volumes
-
+            cd /home/ubuntu/youtube-converter
+            
             echo "Building and starting containers..."
             docker-compose build
             docker-compose up -d
-
-            # Добавляем проверку логов
-            echo "Checking container logs..."
-            sleep 10
+            
+            echo "Waiting for container to start..."
+            sleep 30
+            
+            echo "Container logs:"
             docker-compose logs
-
-            # Проверяем статус контейнера
+            
             echo "Container status:"
             docker ps -a
-
-            echo "Deployment completed successfully."
-
-      - name: Create credentials files
-        run: |
-          echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
-          echo '${{ secrets.YOUTUBE_API_KEY }}' > api.txt
 
       - name: Verify deployment
         run: |

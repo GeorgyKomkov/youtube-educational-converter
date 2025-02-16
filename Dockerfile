@@ -5,14 +5,15 @@ FROM python:3.10
 WORKDIR /app
 
 # Создаём директорию для хранения видео и даём нужные права
-RUN mkdir -p /app/videos && chmod 777 /app/videos
+RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models && \
+    chmod 777 /app/videos /app/output /app/temp /app/cache/models
 
 # Копируем файл зависимостей
 COPY requirements.txt .
 
 # Устанавливаем системные зависимости (FFmpeg нужен для обработки аудио)
 RUN apt-get update && apt-get install -y \
-    libsndfile1 ffmpeg wkhtmltopdf && \
+    libsndfile1 ffmpeg wkhtmltopdf curl && \
     rm -rf /var/lib/apt/lists/*
 
 # Устанавливаем Python-зависимости поэтапно (ускоряет кеширование)

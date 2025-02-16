@@ -1,15 +1,14 @@
 #!/bin/bash
+set -e  # Останавливаем скрипт при ошибках
+
 export PYTHONPATH="/app:$PYTHONPATH"
 export PORT=8080
-echo "Запуск сервера Flask на порту $PORT..."
 
-# Фоновая очистка временных файлов
-(sleep 10 && while true; do
-    find /app/videos -type f -mmin +60 -delete
-    sleep 600
-done) &
+echo "Current directory: $(pwd)"
+echo "Listing files:"
+ls -la
 
-# Проверяем наличие необходимых файлов
+echo "Checking for required files..."
 if [ ! -f "client_secrets.json" ]; then
     echo "ERROR: client_secrets.json not found!"
     exit 1
@@ -20,19 +19,20 @@ if [ ! -f "api.txt" ]; then
     exit 1
 fi
 
-# Запускаем Flask с проверкой
+echo "Starting Flask server..."
 cd /app
 python3 -m src.server &
 SERVER_PID=$!
 
-# Ждем запуска сервера
-sleep 10
+echo "Waiting for server to start..."
+sleep 15
 
-# Проверяем, что сервер запустился
-if ! curl -s http://localhost:8080/health > /dev/null; then
+echo "Checking server health..."
+if ! curl -v http://localhost:8080/health; then
     echo "ERROR: Server failed to start!"
+    docker-compose logs
     exit 1
 fi
 
-# Ждем завершения процесса
+echo "Server started successfully!"
 wait $SERVER_PID
