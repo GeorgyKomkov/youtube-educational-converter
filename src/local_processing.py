@@ -1,28 +1,101 @@
 import requests
 import subprocess
+import os
+import time
+import logging
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 SERVER_URL = "http://your-server-ip:8080"
+MAX_RETRIES = 3
+RETRY_DELAY = 5  # seconds
 
 def request_video_download(video_url):
-    response = requests.post(f"{SERVER_URL}/download", json={"url": video_url})
-    print(response.json())
+    """Отправить запрос на скачивание видео на сервер"""
+    try:
+        response = requests.post(f"{SERVER_URL}/download", 
+                                json={"url": video_url},
+                                timeout=30)
+        if response.status_code == 200:
+            logger.info("Запрос на скачивание успешно отправлен")
+            return response.json()
+        else:
+            logger.error(f"Ошибка при запросе: {response.status_code}, {response.text}")
+            return None
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Ошибка соединения с сервером: {e}")
+        return None
 
 def download_video():
-    response = requests.get(f"{SERVER_URL}/get_video", stream=True)
-    if response.status_code == 200:
-        with open("video.mp4", "wb") as f:
-            for chunk in response.iter_content(chunk_size=1024):
-                f.write(chunk)
-        print("Видео загружено на локальный ПК")
-    else:
-        print("Ошибка скачивания видео")
+    """Скачать видео с сервера на локальный ПК с повторными попытками"""
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = requests.get(f"{SERVER_URL}/get_video", stream=True, timeout=300)
+            if response.status_code == 200:
+                with open("video.mp4", "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                
+                # Проверка, что файл действительно скачался
+                if os.path.exists("video.mp4") and os.path.getsize("video.mp4") > 1024:
+                    logger.info("Видео успешно загружено на локальный ПК")
+                    return True
+                else:
+                    logger.warning("Файл скачан, но имеет подозрительно малый размер")
+            else:
+                logger.error(f"Ошибка скачивания видео: {response.status_code}, {response.text}")
+            
+            if attempt < MAX_RETRIES - 1:
+                logger.info(f"Повторная попытка через {RETRY_DELAY} секунд...")
+                time.sleep(RETRY_DELAY)
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Ошибка соединения при скачивании: {e}")
+            if attempt < MAX_RETRIES - 1:
+                logger.info(f"Повторная попытка через {RETRY_DELAY} секунд...")
+                time.sleep(RETRY_DELAY)
+    
+    logger.error(f"Не удалось скачать видео после {MAX_RETRIES} попыток")
+    return False
 
 def process_video():
-    command = "python3 process_video.py video.mp4"
-    subprocess.run(command, shell=True)
+    """Обработать скачанное видео"""
+    if not os.path.exists("video.mp4"):
+        logger.error("Видеофайл отсутствует, обработка невозможна")
+        return False
+    
+    try:
+        logger.info("Начинаем обработку видео...")
+        command = "python3 src/process_video.py video.mp4"
+        result = subprocess.run(command, shell=True, check=True, 
+                               capture_output=True, text=True)
+        logger.info("Видео успешно обработано")
+        return True
+    except subprocess.SubprocessError as e:
+        logger.error(f"Ошибка при обработке видео: {e}")
+        if hasattr(e, 'stderr'):
+            logger.error(f"Stderr: {e.stderr}")
+        return False
 
 if __name__ == "__main__":
     video_url = input("Введите ссылку на YouTube: ")
-    request_video_download(video_url)
-    download_video()
-    process_video()
+    
+    # Шаг 1: Запрос на скачивание
+    download_info = request_video_download(video_url)
+    if not download_info:
+        logger.error("Не удалось отправить запрос на скачивание. Выход.")
+        exit(1)
+    
+    # Шаг 2: Скачивание видео локально
+    if not download_video():
+        logger.error("Не удалось скачать видео. Выход.")
+        exit(1)
+    
+    # Шаг 3: Обработка видео
+    if not process_video():
+        logger.error("Не удалось обработать видео. Выход.")
+        exit(1)
+    
+    logger.info("Все операции выполнены успешно!")

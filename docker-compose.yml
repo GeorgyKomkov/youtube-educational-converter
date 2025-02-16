@@ -7,6 +7,22 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
+    volumes:
+      - app_videos:/app/videos
+      - app_output:/app/output
+      - app_temp:/app/temp
+      - app_cache:/app/cache/models
     restart: always
-    mem_limit: 400m  # Увеличил лимит памяти для стабильности
+    mem_limit: 512m  # Увеличил лимит памяти еще больше
     mem_reservation: 256m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+volumes:
+  app_videos:
+  app_output:
+  app_temp:
+  app_cache:

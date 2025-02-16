@@ -4,6 +4,9 @@ FROM python:3.10
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
+# Создаём директорию для хранения видео и даём нужные права
+RUN mkdir -p /app/videos && chmod 777 /app/videos
+
 # Копируем файл зависимостей
 COPY requirements.txt .
 

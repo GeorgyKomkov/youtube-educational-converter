@@ -29,11 +29,6 @@ HTML_PAGE = """
 </html>
 """
 
-@app.route("/")
-def home():
-    return render_template_string(HTML_PAGE)
-
-# 🔹 Скачивание видео с ограничением на 1 процесс
 @app.route("/download", methods=["POST"])
 def download_video():
     global lock
@@ -48,12 +43,26 @@ def download_video():
         result = subprocess.run(command, shell=True, capture_output=True, text=True)
 
         if result.returncode != 0:
-            return jsonify({"error": f"Ошибка скачивания: {result.stderr}"}), 500
+            app.logger.error(f"Ошибка yt-dlp: {result.stderr}")
+            return jsonify({
+                "error": f"Ошибка скачивания: {result.stderr[:200]}...",
+                "full_error": result.stderr
+            }), 500
 
     if not os.path.exists(filename):
-        return jsonify({"error": "Ошибка скачивания видео: файл не создан"}), 500
+        app.logger.error(f"Файл не создан после успешного выполнения команды")
+        return jsonify({"error": "Ошибка скачивания видео: файл не создан несмотря на успешное выполнение команды"}), 500
 
-    return jsonify({"message": "Видео скачано", "file": filename})
+    file_size = os.path.getsize(filename)
+    if file_size < 1024:  # Меньше 1KB
+        app.logger.error(f"Файл создан, но слишком маленький: {file_size} байт")
+        return jsonify({"error": f"Файл скачан, но имеет подозрительно малый размер: {file_size} байт"}), 500
+
+    return jsonify({
+        "message": "Видео скачано",
+        "file": filename,
+        "size": file_size
+    })
 
 # 🔹 API для скачивания видео на локальный ПК
 @app.route("/get_video", methods=["GET"])
