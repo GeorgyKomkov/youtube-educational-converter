@@ -18,9 +18,9 @@ services:
       - app_cache:/app/cache/models
       - ${PWD}/client_secrets.json:/app/client_secrets.json:ro
       - ${PWD}/api.txt:/app/api.txt:ro
-    restart: "no"  # Временно отключаем автоперезапуск для отладки
-    mem_limit: 1024m  # Увеличиваем лимит памяти
-    mem_reservation: 512m
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 256m
     working_dir: /app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -33,6 +33,18 @@ services:
       options:
         max-size: "100m"
         max-file: "3"
+    ulimits:
+      nofile:
+        soft: 32768
+        hard: 65536
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
 volumes:
   app_videos:

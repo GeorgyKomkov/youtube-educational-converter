@@ -61,67 +61,81 @@ class WhisperModelCache:
 
 def process_video(video_path):
     """Основная функция обработки видео"""
-    if not os.path.exists(video_path):
-        logger.error(f"Видеофайл не найден: {video_path}")
-        return False
-    
     try:
-        # Загрузка конфигурации
         config = load_config()
-        
-        # Проверка свободного места
         check_disk_space(config['temp_dir'])
-        check_disk_space(config['output_dir'])
         
-        # Создание необходимых директорий
-        os.makedirs(config['temp_dir'], exist_ok=True)
-        os.makedirs(config['output_dir'], exist_ok=True)
+        # Создаем временные директории
+        for dir_path in [config['temp_dir'], config['output_dir']]:
+            os.makedirs(dir_path, exist_ok=True)
+            
+        # Обработка частями
+        chunk_size = 1024 * 1024  # 1MB chunks
+        with open(video_path, 'rb') as video_file:
+            while chunk := video_file.read(chunk_size):
+                # Обработка чанка
+                pass
+                
+        # Очистка после каждого этапа
+        def cleanup_temp():
+            for f in os.listdir(config['temp_dir']):
+                os.remove(os.path.join(config['temp_dir'], f))
+                
+        # 1. Извлечение аудио
+        audio_path = extract_audio(video_path)
         
-        # 1. Извлечение аудио из видео
-        logger.info("Извлечение аудио...")
-        audio_extractor = AudioExtractor(config['temp_dir'])
-        audio_path = audio_extractor.extract(video_path)
+        # 2. Транскрибация
+        transcription = transcribe_audio(audio_path)
+        cleanup_temp()  # Очищаем аудио
         
-        # 2. Обработка кадров
-        logger.info("Обработка видеокадров...")
-        frame_processor = FrameProcessor(
-            config['output_dir'],
-            max_frames=config['video_processing']['max_frames'],
-            mode=config['video_processing']['frame_mode'],
-            blip_enabled=config['blip']['enabled']
-        )
-        frames = frame_processor.process(video_path)
+        # 3. Извлечение кадров
+        frames = extract_frames(video_path)
+        cleanup_temp()  # Очищаем временные кадры
         
-        # 3. Транскрибация аудио с помощью Whisper
-        logger.info("Транскрибация аудио с помощью Whisper...")
-        model_name = config['transcription']['model']
-        use_gpu = config['transcription'].get('use_gpu', False)
+        # 4. Генерация PDF
+        pdf_path = generate_pdf(transcription, frames)
+        cleanup_temp()  # Очищаем все временные файлы
         
-        device = "cuda" if use_gpu and torch.cuda.is_available() else "cpu"
-        model = WhisperModelCache.get_model(model_name, device)
-        
-        result = model.transcribe(audio_path)
-        segments = result['segments']
-        
-        # 4. Генерация выходных файлов
-        logger.info("Генерация итоговых документов...")
-        title = os.path.splitext(os.path.basename(video_path))[0]
-        
-        data = {
-            'title': title,
-            'segments': segments,
-            'frames': frames
-        }
-        
-        output_generator = OutputGenerator(config['output_dir'])
-        output_files = output_generator.generate(data)
-        
-        logger.info(f"Обработка завершена успешно! Результаты: {output_files}")
-        return True
+        return pdf_path
         
     except Exception as e:
-        logger.error(f"Ошибка при обработке видео: {e}", exc_info=True)
-        return False
+        logger.error(f"Ошибка при обработке видео: {e}")
+        cleanup_temp()
+        return None
+
+def extract_audio(video_path):
+    """Извлечение аудио из видео"""
+    audio_extractor = AudioExtractor(config['temp_dir'])
+    return audio_extractor.extract(video_path)
+
+def transcribe_audio(audio_path):
+    """Транскрибация аудио"""
+    model_name = config['transcription']['model']
+    use_gpu = config['transcription'].get('use_gpu', False)
+    device = "cuda" if use_gpu and torch.cuda.is_available() else "cpu"
+    model = WhisperModelCache.get_model(model_name, device)
+    result = model.transcribe(audio_path)
+    return result['segments']
+
+def extract_frames(video_path):
+    """Извлечение кадров из видео"""
+    frame_processor = FrameProcessor(
+        config['output_dir'],
+        max_frames=config['video_processing']['max_frames'],
+        mode=config['video_processing']['frame_mode']
+    )
+    return frame_processor.process(video_path)
+
+def generate_pdf(transcription, frames):
+    """Генерация PDF документа"""
+    title = os.path.splitext(os.path.basename(video_path))[0]
+    data = {
+        'title': title,
+        'segments': transcription,
+        'frames': frames
+    }
+    output_generator = OutputGenerator(config['output_dir'])
+    return output_generator.generate(data)
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -129,8 +143,10 @@ if __name__ == "__main__":
         sys.exit(1)
     
     video_path = sys.argv[1]
-    success = process_video(video_path)
+    pdf_path = process_video(video_path)
     
-    if not success:
+    if pdf_path:
+        logger.info(f"Обработка видео завершена успешно! Результат: {pdf_path}")
+    else:
         logger.error("Обработка видео завершилась с ошибками")
         sys.exit(1)

@@ -28,10 +28,6 @@ jobs:
             
             echo "Verifying files..."
             ls -la client_secrets.json api.txt
-            
-            echo "Checking file contents..."
-            head -n 1 client_secrets.json
-            head -n 1 api.txt
 
       - name: Deploy application
         uses: appleboy/ssh-action@v1.0.0
@@ -47,7 +43,7 @@ jobs:
             docker system prune -f
             
             echo "Building new container..."
-            docker-compose build --no-cache
+            DOCKER_BUILDKIT=1 docker-compose build --no-cache
             
             echo "Starting container..."
             docker-compose up -d
@@ -66,10 +62,7 @@ jobs:
 
       - name: Verify deployment
         run: |
-          # Увеличиваем начальное время ожидания
           sleep 45
-          
-          # Проверяем доступность сервера
           for i in {1..5}; do
             echo "Attempt $i: Checking server status..."
             if curl -v --fail http://${{ secrets.SSH_HOST }}:8080/health; then
@@ -79,6 +72,5 @@ jobs:
             echo "Attempt $i failed, waiting..."
             sleep 15
           done
-          
           echo "Service failed to start properly"
           exit 1

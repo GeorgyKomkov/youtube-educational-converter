@@ -1,18 +1,25 @@
 # config/config.yaml
-temp_dir: "/app/temp/"  # Директория для временных файлов
-output_dir: "/app/output/"  # Директория для результатов
+temp_dir: '/app/temp'
+output_dir: '/app/output'
+video_dir: '/app/videos'
 
 # Директория кеша для моделей
 model_cache: "/app/cache/models"
 
+memory:
+  max_video_size: 500  # MB
+  chunk_size: 1  # MB
+  cleanup_interval: 300  # seconds
+
 transcription:
-  model: "medium"  # Модель Whisper (base, small, medium)
-  use_gpu: false  # Whisper работает на CPU (сервер слабый)
+  model: 'base'
+  use_gpu: false
+  batch_size: 8
 
 video_processing:
-  max_frames: 20  # Максимальное число кадров
-  frame_mode: "interval"  # Режим выбора кадров (scenes или interval)
-  frame_interval: 30  # Интервал в секундах (для режима interval)
+  max_frames: 20
+  frame_mode: 'interval'
+  frame_interval: 30
 
 blip:
   enabled: false  # Отключаем генерацию описаний кадров через BLIP
@@ -38,3 +45,7 @@ network:
 storage:
   cleanup_interval: 3600  # Интервал очистки временных файлов
   max_file_age: 86400    # Максимальное время хранения файлов
+
+pdf:
+  template: 'default'
+  max_size: 50  # MB
