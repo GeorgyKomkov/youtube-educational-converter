@@ -36,8 +36,16 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /home/ubuntu/youtube-converter
+            echo "Creating credentials files..."
             echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
             echo '${{ secrets.YOUTUBE_API_KEY }}' > api.txt
+            
+            echo "Checking files..."
+            ls -la client_secrets.json api.txt
+            
+            echo "File contents (first line):"
+            head -n 1 client_secrets.json
+            head -n 1 api.txt
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.0
@@ -48,8 +56,11 @@ jobs:
           script: |
             cd /home/ubuntu/youtube-converter
             
+            echo "Stopping existing containers..."
+            docker-compose down
+            
             echo "Building and starting containers..."
-            docker-compose build
+            docker-compose build --no-cache
             docker-compose up -d
             
             echo "Waiting for container to start..."
@@ -60,6 +71,9 @@ jobs:
             
             echo "Container status:"
             docker ps -a
+            
+            echo "Checking mounted files in container:"
+            docker exec youtube-converter-server-1 ls -la /app/client_secrets.json /app/api.txt
 
       - name: Verify deployment
         run: |

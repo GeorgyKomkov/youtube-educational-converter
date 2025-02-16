@@ -8,14 +8,16 @@ services:
     environment:
       - PORT=8080
       - PYTHONUNBUFFERED=1  # Для немедленного вывода логов
+      - FLASK_ENV=development  # Добавляем для более подробных логов
+      - FLASK_DEBUG=1
     volumes:
       - app_videos:/app/videos
       - app_output:/app/output
       - app_temp:/app/temp
       - app_cache:/app/cache/models
-      - ./client_secrets.json:/app/client_secrets.json
-      - ./api.txt:/app/api.txt
-    restart: always
+      - ./client_secrets.json:/app/client_secrets.json:ro
+      - ./api.txt:/app/api.txt:ro
+    restart: unless-stopped  # Изменяем политику перезапуска
     mem_limit: 1024m  # Увеличиваем лимит памяти
     mem_reservation: 512m
     healthcheck:
