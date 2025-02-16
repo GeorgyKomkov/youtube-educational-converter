@@ -46,7 +46,7 @@ def download_video():
     filename = os.path.join(VIDEO_DIR, "video.mp4")
 
     with lock:  # Блокируем процесс, пока скачивание не завершится
-        command = f"yt-dlp -f best -o {filename} {video_url}"
+        command = f"yt-dlp -o {filename} {video_url}"
         result = subprocess.run(command, shell=True, capture_output=True, text=True)
 
         if result.returncode != 0:
