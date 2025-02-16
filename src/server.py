@@ -6,6 +6,8 @@ from youtube_api import YouTubeAPI
 from datetime import datetime
 import time
 import logging
+from celery import Celery
+import redis
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,13 @@ youtube_api = YouTubeAPI()
 
 MAX_VIDEO_SIZE = 500 * 1024 * 1024  # 500MB
 
+celery = Celery('tasks', broker='redis://localhost:6379/0')
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
+
+@celery.task
+def process_video_task(video_path):
+    return process_video(video_path)
+
 @app.route("/", methods=["GET"])
 def index():
     # Получаем сообщения из сессии
@@ -86,7 +95,7 @@ def auth():
 
 @app.route("/download", methods=["POST"])
 def download_video():
-    video_url = request.form.get("url") or request.json.get("url")
+    video_url = request.form.get("url")
     
     if not video_url:
         return jsonify({"error": "URL обязателен"}), 400
@@ -99,13 +108,11 @@ def download_video():
             session['error_message'] = "Не удалось получить ссылку на видео"
             return redirect(url_for('index'))
 
-        video_size = request.content_length
-        if video_size and video_size > MAX_VIDEO_SIZE:
-            return jsonify({"error": "Видео слишком большое"}), 413
-
+        # Возвращаем только ссылку и название
         session['success_message'] = f"Видео '{title}' доступно для скачивания!"
         session['download_url'] = download_url
-        return redirect(url_for('index'))
+        task = process_video_task.delay(video_path)
+        return jsonify({"task_id": task.id}), 202
     except Exception as e:
         session['error_message'] = f"Ошибка: {str(e)}"
         return redirect(url_for('index'))

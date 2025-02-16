@@ -11,6 +11,9 @@ services:
       - FLASK_ENV=development  # Добавляем для более подробных логов
       - FLASK_DEBUG=1
       - PYTHONDONTWRITEBYTECODE=1  # Отключаем кэширование .pyc файлов
+      - PYTORCH_NO_CUDA=1
+      - OMP_NUM_THREADS=1
+      - WHISPER_BATCH_SIZE=1
     volumes:
       - app_videos:/app/videos
       - app_output:/app/output
@@ -19,7 +22,7 @@ services:
       - ${PWD}/client_secrets.json:/app/client_secrets.json:ro
       - ${PWD}/api.txt:/app/api.txt:ro
     restart: unless-stopped
-    mem_limit: 512m
+    mem_limit: 384m
     mem_reservation: 256m
     working_dir: /app
     healthcheck:
@@ -40,8 +43,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 512M
+          cpus: '0.8'
+          memory: 384M
         reservations:
           cpus: '0.25'
           memory: 256M

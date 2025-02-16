@@ -7,19 +7,19 @@ video_dir: '/app/videos'
 model_cache: "/app/cache/models"
 
 memory:
-  max_video_size: 500  # MB
+  max_video_size: 100  # MB
   chunk_size: 1  # MB
-  cleanup_interval: 300  # seconds
+  cleanup_interval: 60  # seconds
 
 transcription:
-  model: 'base'
+  model: 'tiny'  # Используем самую маленькую модель
   use_gpu: false
-  batch_size: 8
+  batch_size: 1
 
 video_processing:
-  max_frames: 20
+  max_frames: 10  # Уменьшаем количество кадров
   frame_mode: 'interval'
-  frame_interval: 30
+  frame_interval: 60  # Увеличиваем интервал
 
 blip:
   enabled: false  # Отключаем генерацию описаний кадров через BLIP

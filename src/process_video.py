@@ -27,6 +27,14 @@ def setup_logging():
 setup_logging()
 logger = logging.getLogger(__name__)
 
+# Глобальная конфигурация
+config = None
+
+def init_config():
+    """Инициализация глобальной конфигурации"""
+    global config
+    config = load_config()
+
 def load_config():
     """Загрузка конфигурации из YAML файла"""
     config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'config.yaml')
@@ -37,7 +45,8 @@ def load_config():
             'output_dir': 'output',
             'transcription': {'model': 'base', 'use_gpu': False},
             'video_processing': {'max_frames': 20, 'frame_mode': 'interval', 'frame_interval': 30},
-            'blip': {'enabled': False}
+            'blip': {'enabled': False},
+            'memory': {'max_video_size': 100}
         }
     
     with open(config_path, 'r') as f:
@@ -59,56 +68,45 @@ class WhisperModelCache:
             cls._instance = whisper.load_model(model_name, device=device)
         return cls._instance
 
-def process_video(video_path):
-    """Основная функция обработки видео"""
+def cleanup_temp(temp_dir):
+    """Немедленная очистка временных файлов"""
     try:
-        config = load_config()
-        check_disk_space(config['temp_dir'])
-        
-        # Создаем временные директории
-        for dir_path in [config['temp_dir'], config['output_dir']]:
-            os.makedirs(dir_path, exist_ok=True)
+        for f in os.listdir(temp_dir):
+            os.remove(os.path.join(temp_dir, f))
+    except Exception as e:
+        logger.error(f"Ошибка очистки: {e}")
+
+def process_video(video_path):
+    try:
+        # Проверка размера
+        if os.path.getsize(video_path) > config['memory']['max_video_size'] * 1024 * 1024:
+            raise ValueError("Видео слишком большое")
             
-        # Обработка частями
-        chunk_size = 1024 * 1024  # 1MB chunks
-        with open(video_path, 'rb') as video_file:
-            while chunk := video_file.read(chunk_size):
-                # Обработка чанка
-                pass
-                
-        # Очистка после каждого этапа
-        def cleanup_temp():
-            for f in os.listdir(config['temp_dir']):
-                os.remove(os.path.join(config['temp_dir'], f))
-                
-        # 1. Извлечение аудио
-        audio_path = extract_audio(video_path)
+        # Очистка перед началом
+        cleanup_temp(config['temp_dir'])
         
-        # 2. Транскрибация
-        transcription = transcribe_audio(audio_path)
-        cleanup_temp()  # Очищаем аудио
+        # Обработка по частям
+        audio_path = extract_audio(video_path, config)
+        cleanup_temp(config['temp_dir'])
         
-        # 3. Извлечение кадров
-        frames = extract_frames(video_path)
-        cleanup_temp()  # Очищаем временные кадры
+        transcription = transcribe_audio(audio_path, config)
+        cleanup_temp(config['temp_dir'])
         
-        # 4. Генерация PDF
-        pdf_path = generate_pdf(transcription, frames)
-        cleanup_temp()  # Очищаем все временные файлы
+        frames = extract_frames(video_path, config)
+        cleanup_temp(config['temp_dir'])
         
+        pdf_path = generate_pdf(transcription, frames, video_path, config)
         return pdf_path
         
-    except Exception as e:
-        logger.error(f"Ошибка при обработке видео: {e}")
-        cleanup_temp()
-        return None
+    finally:
+        cleanup_temp(config['temp_dir'])
 
-def extract_audio(video_path):
+def extract_audio(video_path, config):
     """Извлечение аудио из видео"""
     audio_extractor = AudioExtractor(config['temp_dir'])
     return audio_extractor.extract(video_path)
 
-def transcribe_audio(audio_path):
+def transcribe_audio(audio_path, config):
     """Транскрибация аудио"""
     model_name = config['transcription']['model']
     use_gpu = config['transcription'].get('use_gpu', False)
@@ -117,7 +115,7 @@ def transcribe_audio(audio_path):
     result = model.transcribe(audio_path)
     return result['segments']
 
-def extract_frames(video_path):
+def extract_frames(video_path, config):
     """Извлечение кадров из видео"""
     frame_processor = FrameProcessor(
         config['output_dir'],
@@ -126,7 +124,7 @@ def extract_frames(video_path):
     )
     return frame_processor.process(video_path)
 
-def generate_pdf(transcription, frames):
+def generate_pdf(transcription, frames, video_path, config):
     """Генерация PDF документа"""
     title = os.path.splitext(os.path.basename(video_path))[0]
     data = {
