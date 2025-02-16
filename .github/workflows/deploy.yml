@@ -35,16 +35,27 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /home/ubuntu/youtube-converter
-            if [ ! -d .git ]; then
-              git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git .
+            cd /home/ubuntu
+
+            # Проверяем, есть ли репозиторий, иначе клонируем
+            if [ ! -d "youtube-converter/.git" ]; then
+              git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git youtube-converter
             fi
-            git fetch
+
+            cd youtube-converter
+            git fetch --all
             git reset --hard origin/main
-            docker-compose down
+
+            echo "Stopping running containers..."
+            docker stop $(docker ps -q) || true
+            docker rm $(docker ps -aq) || true
+            docker network prune -f || true
+
+            echo "Cleaning up Docker system..."
             docker system prune -af --volumes
-            docker-compose up -d --build
-            
-            # Добавляем задержку перед запуском Celery
-            sleep 10
-            docker-compose exec -d app celery -A celery_app worker --loglevel=info
+
+            echo "Building and starting containers..."
+            docker-compose build
+            docker-compose up -d
+
+            echo "Deployment completed successfully."

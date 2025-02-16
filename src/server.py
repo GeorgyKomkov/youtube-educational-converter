@@ -1,13 +1,18 @@
 from flask import Flask, request, jsonify, render_template_string, send_file
 import subprocess
 import os
+import time
+import threading
 
 app = Flask(__name__)
 
 VIDEO_DIR = "/app/videos"
 os.makedirs(VIDEO_DIR, exist_ok=True)
 
-# 📌 HTML-страница для пользователя
+# 🔹 Блокировка для контроля одновременного скачивания
+lock = threading.Lock()
+
+# 🔹 HTML-страница для ввода ссылки
 HTML_PAGE = """
 <!DOCTYPE html>
 <html>
@@ -28,27 +33,44 @@ HTML_PAGE = """
 def home():
     return render_template_string(HTML_PAGE)
 
+# 🔹 Скачивание видео с ограничением на 1 процесс
 @app.route("/download", methods=["POST"])
 def download_video():
+    global lock
     video_url = request.form.get("url") or request.json.get("url")
     if not video_url:
         return jsonify({"error": "URL обязателен"}), 400
 
     filename = os.path.join(VIDEO_DIR, "video.mp4")
-    command = f"yt-dlp -o {filename} {video_url}"
-    subprocess.run(command, shell=True)
+
+    with lock:  # Запрещаем запуск нового скачивания, пока не завершено предыдущее
+        command = f"yt-dlp -o {filename} {video_url}"
+        subprocess.run(command, shell=True)
 
     if not os.path.exists(filename):
         return jsonify({"error": "Ошибка скачивания видео"}), 500
 
     return jsonify({"message": "Видео скачано", "file": filename})
 
+# 🔹 API для скачивания видео на локальный ПК
 @app.route("/get_video", methods=["GET"])
 def get_video():
     filename = os.path.join(VIDEO_DIR, "video.mp4")
     if not os.path.exists(filename):
         return jsonify({"error": "Видео не найдено"}), 404
     return send_file(filename, as_attachment=True)
+
+# 🔹 Фоновая очистка старых видео (каждые 10 минут удаляет файлы старше 1 часа)
+def cleanup_videos():
+    while True:
+        for file in os.listdir(VIDEO_DIR):
+            file_path = os.path.join(VIDEO_DIR, file)
+            if os.path.isfile(file_path) and time.time() - os.path.getmtime(file_path) > 3600:
+                os.remove(file_path)
+        time.sleep(600)  # Проверять каждые 10 минут
+
+# Запускаем очистку в фоновом потоке
+threading.Thread(target=cleanup_videos, daemon=True).start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)

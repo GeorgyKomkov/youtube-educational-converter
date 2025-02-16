@@ -1,52 +1,26 @@
-version: '3.7'
+# config/config.yaml
+temp_dir: "/app/temp/"  # Директория для временных файлов
+output_dir: "/app/output/"  # Директория для результатов
 
-services:
-  app:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      - PORT=8080
-    command: gunicorn --bind 0.0.0.0:8080 --workers=1 --threads=1 --timeout=300 --max-requests=5 --max-requests-jitter=2 main:app
-    restart: always
-    depends_on:
-      - redis
-    mem_limit: 200m
-    mem_reservation: 150m
+# Директория кеша для моделей
+model_cache: "/app/cache/models"
 
-  redis:
-    image: redis:latest
-    restart: always
-    ports:
-      - "6379:6379"
-    mem_limit: 100m
+transcription:
+  model: "medium"  # Модель Whisper (base, small, medium)
+  use_gpu: false  # Whisper работает на CPU (сервер слабый)
 
-  celery:
-    build: .
-    command: celery -A celery_app worker --loglevel=info --concurrency=1
-    depends_on:
-      - redis
-    restart: always
-    mem_limit: 300m
-    mem_reservation: 200m
+video_processing:
+  max_frames: 20  # Максимальное число кадров
+  frame_mode: "interval"  # Режим выбора кадров (scenes или interval)
+  frame_interval: 30  # Интервал в секундах (для режима interval)
 
-  celery-beat:
-    build: .
-    command: celery -A celery_app beat --loglevel=info
-    depends_on:
-      - redis
-      - celery
-    restart: always
-    mem_limit: 100m
-    mem_reservation: 64m
+blip:
+  enabled: false  # Отключаем генерацию описаний кадров через BLIP
 
-  worker:
-    build: .
-    command: celery -A celery_app worker --loglevel=info --concurrency=1
-    depends_on:
-      - redis
-      - celery
-    restart: always
-    mem_limit: 300m
-    mem_reservation: 128m
+parallel_processing:
+  enabled: false  # Отключаем параллельную обработку видео и аудио (слабый сервер)
+  max_workers: 1  # Только 1 поток (экономим ресурсы)
 
+server:
+  host: "0.0.0.0"
+  port: 8080
