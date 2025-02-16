@@ -1,51 +1,12 @@
 version: '3.7'
 
 services:
-  app:
+  server:
     build: .
     ports:
       - "8080:8080"
     environment:
       - PORT=8080
-    command: gunicorn --bind 0.0.0.0:8080 --workers=1 --threads=1 --timeout=300 main:app
-    restart: always
-    depends_on:
-      - redis
-    mem_limit: 250m
-    mem_reservation: 200m
-
-  redis:
-    image: redis:latest
-    restart: always
-    ports:
-      - "6379:6379"
-    mem_limit: 100m
-
-  celery:
-    build: .
-    command: celery -A celery_app worker --loglevel=info --concurrency=1
-    depends_on:
-      - redis
-    restart: always
-    mem_limit: 400m
-    mem_reservation: 256m
-
-  celery-beat:
-    build: .
-    command: celery -A celery_app beat --loglevel=info
-    depends_on:
-      - redis
-      - celery
-    restart: always
-    mem_limit: 100m
-    mem_reservation: 64m
-
-  worker:
-    build: .
-    command: celery -A celery_app worker --loglevel=info --concurrency=1
-    depends_on:
-      - redis
-      - celery
     restart: always
     mem_limit: 300m
-    mem_reservation: 128m
+    mem_reservation: 150m
