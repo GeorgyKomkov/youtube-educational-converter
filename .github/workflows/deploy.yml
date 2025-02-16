@@ -58,6 +58,15 @@ jobs:
             docker-compose build
             docker-compose up -d
 
+            # Добавляем проверку логов
+            echo "Checking container logs..."
+            sleep 10
+            docker-compose logs
+
+            # Проверяем статус контейнера
+            echo "Container status:"
+            docker ps -a
+
             echo "Deployment completed successfully."
 
       - name: Create credentials files
@@ -67,17 +76,18 @@ jobs:
 
       - name: Verify deployment
         run: |
-          # Ждем, пока контейнер полностью запустится
-          sleep 30  
+          # Увеличиваем начальное время ожидания
+          sleep 45
           
-          # Пробуем несколько раз
+          # Проверяем доступность сервера
           for i in {1..5}; do
-            if curl --fail http://${{ secrets.SSH_HOST }}:8080/health; then
+            echo "Attempt $i: Checking server status..."
+            if curl -v --fail http://${{ secrets.SSH_HOST }}:8080/health; then
               echo "Service is up and running!"
               exit 0
             fi
             echo "Attempt $i failed, waiting..."
-            sleep 10
+            sleep 15
           done
           
           echo "Service failed to start properly"
