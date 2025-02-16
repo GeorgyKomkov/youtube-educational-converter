@@ -43,12 +43,15 @@ def download_video():
 
     filename = os.path.join(VIDEO_DIR, "video.mp4")
 
-    with lock:  # Запрещаем запуск нового скачивания, пока не завершено предыдущее
-        command = f"yt-dlp -o {filename} {video_url}"
-        subprocess.run(command, shell=True)
+    with lock:  # Блокируем процесс, пока скачивание не завершится
+        command = f"yt-dlp -f best -o {filename} {video_url}"
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            return jsonify({"error": f"Ошибка скачивания: {result.stderr}"}), 500
 
     if not os.path.exists(filename):
-        return jsonify({"error": "Ошибка скачивания видео"}), 500
+        return jsonify({"error": "Ошибка скачивания видео: файл не создан"}), 500
 
     return jsonify({"message": "Видео скачано", "file": filename})
 
