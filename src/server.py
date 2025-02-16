@@ -4,6 +4,10 @@ import secrets
 import threading
 from youtube_api import YouTubeAPI
 from datetime import datetime
+import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)  # Для управления сессиями
@@ -56,6 +60,8 @@ HTML_PAGE = """
 
 youtube_api = YouTubeAPI()
 
+MAX_VIDEO_SIZE = 500 * 1024 * 1024  # 500MB
+
 @app.route("/", methods=["GET"])
 def index():
     # Получаем сообщения из сессии
@@ -93,6 +99,10 @@ def download_video():
             session['error_message'] = "Не удалось получить ссылку на видео"
             return redirect(url_for('index'))
 
+        video_size = request.content_length
+        if video_size and video_size > MAX_VIDEO_SIZE:
+            return jsonify({"error": "Видео слишком большое"}), 413
+
         session['success_message'] = f"Видео '{title}' доступно для скачивания!"
         session['download_url'] = download_url
         return redirect(url_for('index'))
@@ -107,6 +117,23 @@ def health_check():
         "status": "healthy",
         "timestamp": datetime.now().isoformat()
     }), 200
+
+def cleanup_old_files():
+    """Очистка старых временных файлов"""
+    while True:
+        try:
+            for dir_path in [VIDEO_DIR, OUTPUT_DIR]:
+                for file in os.listdir(dir_path):
+                    file_path = os.path.join(dir_path, file)
+                    if time.time() - os.path.getmtime(file_path) > 24*60*60:  # 24 часа
+                        os.remove(file_path)
+        except Exception as e:
+            logger.error(f"Ошибка при очистке файлов: {e}")
+        time.sleep(3600)  # Проверка каждый час
+
+# Запускаем очистку в отдельном потоке
+cleanup_thread = threading.Thread(target=cleanup_old_files, daemon=True)
+cleanup_thread.start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)

@@ -4,6 +4,9 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import pickle
+import time
+
+MAX_TOKEN_REFRESH_ATTEMPTS = 3
 
 class YouTubeAPI:
     def __init__(self):
@@ -21,27 +24,33 @@ class YouTubeAPI:
 
     def authenticate(self):
         """OAuth2 аутентификация"""
-        creds = None
-        if os.path.exists('token.pickle'):
-            with open('token.pickle', 'rb') as token:
-                creds = pickle.load(token)
+        for attempt in range(MAX_TOKEN_REFRESH_ATTEMPTS):
+            try:
+                creds = None
+                if os.path.exists('token.pickle'):
+                    with open('token.pickle', 'rb') as token:
+                        creds = pickle.load(token)
 
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'client_secrets.json',
-                    ['https://www.googleapis.com/auth/youtube.readonly']
-                )
-                creds = flow.run_local_server(port=8080)
-                
-            with open('token.pickle', 'wb') as token:
-                pickle.dump(creds, token)
+                if not creds or not creds.valid:
+                    if creds and creds.expired and creds.refresh_token:
+                        creds.refresh(Request())
+                    else:
+                        flow = InstalledAppFlow.from_client_secrets_file(
+                            'client_secrets.json',
+                            ['https://www.googleapis.com/auth/youtube.readonly']
+                        )
+                        creds = flow.run_local_server(port=8080)
+                        
+                    with open('token.pickle', 'wb') as token:
+                        pickle.dump(creds, token)
 
-        self.credentials = creds
-        self.youtube = build('youtube', 'v3', credentials=creds)
-        return True
+                self.credentials = creds
+                self.youtube = build('youtube', 'v3', credentials=creds)
+                return True
+            except Exception as e:
+                if attempt == MAX_TOKEN_REFRESH_ATTEMPTS - 1:
+                    raise RuntimeError(f"Не удалось обновить токен после {MAX_TOKEN_REFRESH_ATTEMPTS} попыток")
+                time.sleep(2 ** attempt)
 
     def get_video_info(self, video_id):
         """Получает информацию о видео"""

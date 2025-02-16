@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 import torch
+from os import statvfs
 from audio_extractor import AudioExtractor
 from frame_processor import FrameProcessor
 from output_generator import OutputGenerator
@@ -42,6 +43,22 @@ def load_config():
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
+def check_disk_space(path, required_mb=1000):
+    """Проверка свободного места на диске"""
+    stats = statvfs(path)
+    free_mb = (stats.f_bavail * stats.f_frsize) / (1024 * 1024)
+    if free_mb < required_mb:
+        raise RuntimeError(f"Недостаточно места на диске. Требуется {required_mb}MB, доступно {free_mb}MB")
+
+class WhisperModelCache:
+    _instance = None
+    
+    @classmethod
+    def get_model(cls, model_name, device):
+        if cls._instance is None:
+            cls._instance = whisper.load_model(model_name, device=device)
+        return cls._instance
+
 def process_video(video_path):
     """Основная функция обработки видео"""
     if not os.path.exists(video_path):
@@ -51,6 +68,10 @@ def process_video(video_path):
     try:
         # Загрузка конфигурации
         config = load_config()
+        
+        # Проверка свободного места
+        check_disk_space(config['temp_dir'])
+        check_disk_space(config['output_dir'])
         
         # Создание необходимых директорий
         os.makedirs(config['temp_dir'], exist_ok=True)
@@ -77,7 +98,7 @@ def process_video(video_path):
         use_gpu = config['transcription'].get('use_gpu', False)
         
         device = "cuda" if use_gpu and torch.cuda.is_available() else "cpu"
-        model = whisper.load_model(model_name, device=device)
+        model = WhisperModelCache.get_model(model_name, device)
         
         result = model.transcribe(audio_path)
         segments = result['segments']
