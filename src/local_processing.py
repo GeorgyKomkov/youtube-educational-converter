@@ -39,7 +39,6 @@ def download_video():
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
                 
-                # Проверка, что файл действительно скачался
                 if os.path.exists("video.mp4") and os.path.getsize("video.mp4") > 1024:
                     logger.info("Видео успешно загружено на локальный ПК")
                     return True
@@ -79,6 +78,23 @@ def process_video():
             logger.error(f"Stderr: {e.stderr}")
         return False
 
+def upload_pdf(pdf_path):
+    """Отправка PDF-учебника на сервер"""
+    try:
+        with open(pdf_path, 'rb') as f:
+            files = {'file': f}
+            response = requests.post(f"{SERVER_URL}/upload_pdf", files=files)
+        
+        if response.status_code == 200:
+            logger.info(f"PDF успешно загружен на сервер: {pdf_path}")
+            return True
+        else:
+            logger.error(f"Ошибка загрузки PDF: {response.status_code}, {response.text}")
+            return False
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Ошибка соединения с сервером при загрузке PDF: {e}")
+        return False
+
 if __name__ == "__main__":
     video_url = input("Введите ссылку на YouTube: ")
     
@@ -96,6 +112,12 @@ if __name__ == "__main__":
     # Шаг 3: Обработка видео
     if not process_video():
         logger.error("Не удалось обработать видео. Выход.")
+        exit(1)
+    
+    # Шаг 4: Отправка PDF на сервер
+    pdf_path = "output/video.pdf"  # Путь к PDF после обработки
+    if not upload_pdf(pdf_path):
+        logger.error("Не удалось загрузить PDF на сервер.")
         exit(1)
     
     logger.info("Все операции выполнены успешно!")
