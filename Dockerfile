@@ -19,9 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем весь проект
 COPY . .
 
-# Создаём директорию для хранения видео и даём нужные права
-RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models && \
-    chmod 777 /app/videos /app/output /app/temp /app/cache/models
+# Создаём директории
+RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models /app/logs && \
+    chmod 777 /app/videos /app/output /app/temp /app/cache/models /app/logs
 
 # Проверяем наличие файлов конфигурации
 RUN test -f /app/client_secrets.json || echo "Warning: client_secrets.json not found"
