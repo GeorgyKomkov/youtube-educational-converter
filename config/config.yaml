@@ -24,3 +24,9 @@ parallel_processing:
 server:
   host: "0.0.0.0"
   port: 8080
+
+youtube_api:
+  credentials_file: "client_secrets.json"
+  token_file: "token.pickle"
+  scopes: 
+    - "https://www.googleapis.com/auth/youtube.readonly"

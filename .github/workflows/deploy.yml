@@ -59,3 +59,8 @@ jobs:
             docker-compose up -d
 
             echo "Deployment completed successfully."
+
+      - name: Create credentials files
+        run: |
+          echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
+          echo '${{ secrets.YOUTUBE_API_KEY }}' > api.txt
