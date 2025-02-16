@@ -6,17 +6,17 @@ output_dir: "/app/output/"
 model_cache: "/app/cache/models"
 
 transcription:
-  model: "base"  # Минимальная модель Whisper
+  model: "tiny"  # ⬅️ Меняем с "base" на "tiny", чтобы уменьшить RAM
   use_gpu: false
-  whisper_cache: false  # Отключаем кеширование моделей Whisper
+  whisper_cache: false
 
 video_processing:
-  max_frames: 5  # Уменьшаем число кадров, чтобы снизить нагрузку
+  max_frames: 3  # ⬅️ Снижаем нагрузку, уменьшив количество кадров
   frame_mode: "interval"
   frame_interval: 30
 
 blip:
-  enabled: false  # Отключаем BLIP для уменьшения нагрузки
+  enabled: false
 
 parallel_processing:
   enabled: true
@@ -26,4 +26,3 @@ celery:
   enabled: true
   broker_url: "redis://redis:6379/0"
   backend_url: "redis://redis:6379/0"
-
