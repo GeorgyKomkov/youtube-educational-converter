@@ -23,10 +23,10 @@ HTML_PAGE = """
 </head>
 <body>
     <h2>Введите ссылку на YouTube</h2>
-    <form action="/download" method="post">
-        <input type="text" name="url" placeholder="https://www.youtube.com/watch?v=..." required>
-        <button type="submit">Скачать</button>
-    </form>
+<form action="/download" method="post">
+    <input type="text" name="url" placeholder="https://www.youtube.com/watch?v=..." required>
+    <button type="submit">Скачать</button>
+</form>
 
     {% if pdf_link %}
         <h3>Ваш PDF-учебник готов:</h3>
@@ -40,12 +40,15 @@ HTML_PAGE = """
 def download_video():
     global lock
     video_url = request.form.get("url") or request.json.get("url")
+    
     if not video_url:
         return jsonify({"error": "URL обязателен"}), 400
 
+    app.logger.info(f"Получен URL для скачивания: {video_url}")  # Логируем URL
+
     filename = os.path.join(VIDEO_DIR, "video.mp4")
 
-    with lock:  # Блокируем процесс, пока скачивание не завершится
+    with lock:
         command = f"yt-dlp -o {filename} {video_url}"
         result = subprocess.run(command, shell=True, capture_output=True, text=True)
 
@@ -59,10 +62,8 @@ def download_video():
     if not os.path.exists(filename):
         return jsonify({"error": "Ошибка скачивания видео: файл не создан"}), 500
 
-    return jsonify({
-        "message": "Видео скачано",
-        "file": filename
-    })
+    return jsonify({"message": "Видео скачано", "file": filename})
+
 
 @app.route("/get_video", methods=["GET"])
 def get_video():
@@ -100,3 +101,4 @@ threading.Thread(target=cleanup_videos, daemon=True).start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+
