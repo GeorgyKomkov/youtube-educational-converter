@@ -3,6 +3,7 @@ import os
 import secrets
 import threading
 from youtube_api import YouTubeAPI
+from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)  # Для управления сессиями
@@ -98,6 +99,14 @@ def download_video():
     except Exception as e:
         session['error_message'] = f"Ошибка: {str(e)}"
         return redirect(url_for('index'))
+
+@app.route("/health")
+def health_check():
+    """Эндпоинт для проверки работоспособности сервера"""
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat()
+    }), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)

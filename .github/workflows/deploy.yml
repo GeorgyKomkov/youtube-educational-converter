@@ -67,5 +67,18 @@ jobs:
 
       - name: Verify deployment
         run: |
-          sleep 10  # Даем время на запуск
-          curl --fail http://${{ secrets.SSH_HOST }}:8080/health || exit 1
+          # Ждем, пока контейнер полностью запустится
+          sleep 30  
+          
+          # Пробуем несколько раз
+          for i in {1..5}; do
+            if curl --fail http://${{ secrets.SSH_HOST }}:8080/health; then
+              echo "Service is up and running!"
+              exit 0
+            fi
+            echo "Attempt $i failed, waiting..."
+            sleep 10
+          done
+          
+          echo "Service failed to start properly"
+          exit 1
