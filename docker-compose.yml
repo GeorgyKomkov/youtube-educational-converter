@@ -1,6 +1,22 @@
 version: '3.7'
 
 services:
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    mem_limit: 256m
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
+    networks:
+      - app_network
+
   server:
     build: .
     ports:
@@ -14,6 +30,8 @@ services:
       - PYTORCH_NO_CUDA=1
       - OMP_NUM_THREADS=1
       - WHISPER_BATCH_SIZE=1
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
     volumes:
       - app_videos:/app/videos
       - app_output:/app/output
@@ -22,8 +40,7 @@ services:
       - ${PWD}/client_secrets.json:/app/client_secrets.json:ro
       - ${PWD}/api.txt:/app/api.txt:ro
     restart: unless-stopped
-    mem_limit: 384m
-    mem_reservation: 256m
+    mem_reservation: 1024m
     working_dir: /app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -40,17 +57,50 @@ services:
       nofile:
         soft: 32768
         hard: 65536
+    depends_on:
+      - redis
+    networks:
+      - app_network
+    mem_limit: 512m
     deploy:
       resources:
         limits:
-          cpus: '0.8'
-          memory: 384M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
+          cpus: '0.5'
+          memory: 512M
+
+  worker:
+    build: .
+    command: celery -A src.server.celery worker --loglevel=info --pool=solo
+    volumes:
+      - app_videos:/app/videos
+      - app_output:/app/output
+      - app_temp:/app/temp
+      - app_cache:/app/cache/models
+      - ${PWD}/client_secrets.json:/app/client_secrets.json:ro
+      - ${PWD}/api.txt:/app/api.txt:ro
+    depends_on:
+      - redis
+    environment:
+      - PYTHONUNBUFFERED=1
+      - C_FORCE_ROOT=true
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    mem_limit: 512m
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    networks:
+      - app_network
 
 volumes:
   app_videos:
   app_output:
   app_temp:
   app_cache:
+  redis_data:
+
+networks:
+  app_network:
+    driver: bridge

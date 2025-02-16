@@ -67,8 +67,17 @@ youtube_api = YouTubeAPI()
 
 MAX_VIDEO_SIZE = 500 * 1024 * 1024  # 500MB
 
-celery = Celery('tasks', broker='redis://localhost:6379/0')
-redis_client = redis.Redis(host='localhost', port=6379, db=0)
+# Создаем приложение Celery
+celery = Celery('youtube_converter')
+celery.conf.update({
+    'broker_url': 'redis://redis:6379/0',
+    'result_backend': 'redis://redis:6379/0',
+    'task_serializer': 'json',
+    'result_serializer': 'json',
+    'accept_content': ['json']
+})
+
+redis_client = redis.Redis(host='redis', port=6379, db=0)
 
 @celery.task
 def process_video_task(video_path):
@@ -159,11 +168,30 @@ def cleanup_old_files():
 cleanup_thread = threading.Thread(target=cleanup_old_files, daemon=True)
 cleanup_thread.start()
 
+def check_redis():
+    try:
+        redis_client.ping()
+        logger.info("Successfully connected to Redis")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to connect to Redis: {e}")
+        return False
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     host = os.environ.get("HOST", "0.0.0.0")
     
     logger.info(f"Starting server on {host}:{port}")
+    retries = 5
+    while retries > 0 and not check_redis():
+        logger.info(f"Waiting for Redis... {retries} attempts left")
+        time.sleep(5)
+        retries -= 1
+    
+    if retries == 0:
+        logger.error("Could not connect to Redis. Exiting.")
+        sys.exit(1)
+        
     try:
         app.run(host=host, port=port)
     except Exception as e:

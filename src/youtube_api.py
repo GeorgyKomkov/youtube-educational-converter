@@ -78,9 +78,11 @@ class YouTubeAPI:
             return None, str(e)
 
     def get_download_url(self, video_id):
-        """Получает URL для скачивания"""
+        """Получает прямую ссылку на скачивание"""
         info, error = self.get_video_info(video_id)
         if error:
             return None, error
             
-        return f"https://www.youtube.com/watch?v={video_id}", info['title']
+        # Возвращаем прямую ссылку на видео
+        download_url = f"https://www.youtube.com/watch?v={video_id}"
+        return download_url, info['title']

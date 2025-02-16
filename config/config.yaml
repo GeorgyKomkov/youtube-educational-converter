@@ -7,12 +7,12 @@ video_dir: '/app/videos'
 model_cache: "/app/cache/models"
 
 memory:
-  max_video_size: 100  # MB
+  max_video_size: 50  # MB
   chunk_size: 1  # MB
-  cleanup_interval: 60  # seconds
+  cleanup_interval: 30  # seconds
 
 transcription:
-  model: 'tiny'  # Используем самую маленькую модель
+  model: 'tiny'
   use_gpu: false
   batch_size: 1
 

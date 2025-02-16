@@ -30,6 +30,8 @@ RUN test -f /app/api.txt || echo "Warning: api.txt not found"
 # Устанавливаем переменные окружения
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=src/server.py
+ENV C_FORCE_ROOT=true
+ENV CELERY_APP=src.server.celery
 
 # Проверяем работоспособность
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

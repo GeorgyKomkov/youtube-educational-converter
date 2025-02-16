@@ -78,6 +78,10 @@ def cleanup_temp(temp_dir):
 
 def process_video(video_path):
     try:
+        # Инициализируем конфигурацию при первом вызове
+        if config is None:
+            init_config()
+            
         # Проверка размера
         if os.path.getsize(video_path) > config['memory']['max_video_size'] * 1024 * 1024:
             raise ValueError("Видео слишком большое")
