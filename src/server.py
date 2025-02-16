@@ -49,7 +49,8 @@ def download_video():
     filename = os.path.join(VIDEO_DIR, "video.mp4")
 
     with lock:
-        command = f"yt-dlp -o {filename} {video_url}"
+        command = f"yt-dlp --cookies-from-browser chrome -o {filename} {video_url}"
+
         result = subprocess.run(command, shell=True, capture_output=True, text=True)
 
         if result.returncode != 0:
