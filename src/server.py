@@ -5,10 +5,10 @@ import time
 import threading
 import secrets
 import json
-from urllib.parse import quote
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(16)  # For session management
+app.secret_key = secrets.token_hex(16)  # Для управления сессиями
 
 VIDEO_DIR = "/app/videos"
 OUTPUT_DIR = "/app/output"
@@ -71,36 +71,42 @@ HTML_PAGE = """
 </html>
 """
 
+def create_empty_cookie_file(cookie_file):
+    """Создаёт пустой файл cookie в формате Netscape"""
+    with open(cookie_file, 'w') as f:
+        f.write("# Netscape HTTP Cookie File\n")
+        f.write("# This is a generated file!  Do not edit.\n")
+        f.write("# To delete cookies, use the Cookie Manager.\n\n")
+
 @app.route("/login")
 def login():
-    # Generate unique session ID for this user
+    # Генерируем уникальный ID сессии для этого пользователя
     session_id = secrets.token_urlsafe(16)
     session['session_id'] = session_id
     
-    # Save a placeholder cookie file
+    # Сохраняем пустой файл cookie в правильном формате
     cookie_file = os.path.join(COOKIES_DIR, f"{session_id}.txt")
-    with open(cookie_file, 'w') as f:
-        f.write("# Placeholder for YouTube cookies")
+    create_empty_cookie_file(cookie_file)
     
-    # Prepare YouTube login URL with instructions
+    # Подготавливаем URL для входа в YouTube с инструкциями
     login_instructions = """
-    <h2>YouTube Authentication Instructions</h2>
+    <h2>Инструкции по авторизации YouTube</h2>
     <ol>
-        <li>Log in to your YouTube account</li>
-        <li>After logging in, come back to this tab and click "I've Logged In"</li>
-        <li>We'll use your browser's YouTube session for downloading videos</li>
+        <li>Войдите в свой аккаунт YouTube</li>
+        <li>После входа вернитесь на эту вкладку и нажмите "Я вошел в систему"</li>
+        <li>Мы будем использовать вашу сессию YouTube для загрузки видео</li>
     </ol>
     <form action="/auth_complete" method="get">
-        <button type="submit">I've Logged In</button>
+        <button type="submit">Я вошел в систему</button>
     </form>
     """
     
-    # Open YouTube in a new tab and show instructions
+    # Открываем YouTube в новой вкладке и показываем инструкции
     return f"""
     <!DOCTYPE html>
     <html>
     <head>
-        <title>YouTube Login</title>
+        <title>Вход в YouTube</title>
         <style>
             body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
         </style>
@@ -122,7 +128,7 @@ def auth_complete():
 
 @app.route("/logout", methods=["POST"])
 def logout():
-    # Clear session data
+    # Очищаем данные сессии
     session_id = session.get('session_id')
     if session_id:
         cookie_file = os.path.join(COOKIES_DIR, f"{session_id}.txt")
@@ -146,37 +152,44 @@ def download_video():
     session_id = session.get('session_id')
     
     with lock:
-        # Base command without authentication
+        # Базовая команда без аутентификации
         command = f"yt-dlp -o {filename} {video_url}"
         
-        # If user is logged in, try to use their session
+        # Если пользователь авторизован, пробуем использовать его сессию
         if session.get('logged_in') and session_id:
             cookie_file = os.path.join(COOKIES_DIR, f"{session_id}.txt")
             if os.path.exists(cookie_file):
-                command = f"yt-dlp --cookies {cookie_file} -o {filename} {video_url}"
-        
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                # Пробуем скачать без cookies сначала
+                result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                
+                # Если не удалось, пробуем с cookies
+                if result.returncode != 0 and "requires authentication" in result.stderr:
+                    command = f"yt-dlp --cookies {cookie_file} -o {filename} {video_url}"
+                    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                
+        else:
+            result = subprocess.run(command, shell=True, capture_output=True, text=True)
 
         if result.returncode != 0:
             error_msg = result.stderr
             app.logger.error(f"Ошибка yt-dlp: {error_msg}")
             
-            # If it's an authentication error and we're not using API
+            # Если это ошибка аутентификации и мы не используем API
             if "sign in to confirm your age" in error_msg.lower() or "private video" in error_msg.lower():
-                if request.form.get("url"):  # Browser request
+                if request.form.get("url"):  # Запрос из браузера
                     session['error_message'] = "Для этого видео требуется вход на YouTube. Пожалуйста, авторизуйтесь."
                     return redirect(url_for('index'))
-                else:  # API request
+                else:  # API запрос
                     return jsonify({
                         "error": "Требуется авторизация на YouTube",
                         "auth_required": True
                     }), 403
             
-            # Other errors
-            if request.form.get("url"):  # Browser request
+            # Другие ошибки
+            if request.form.get("url"):  # Запрос из браузера
                 session['error_message'] = f"Ошибка скачивания: {error_msg[:200]}..."
                 return redirect(url_for('index'))
-            else:  # API request
+            else:  # API запрос
                 return jsonify({
                     "error": f"Ошибка скачивания: {error_msg[:200]}...",
                     "full_error": error_msg
@@ -184,17 +197,17 @@ def download_video():
 
     if not os.path.exists(filename):
         error_msg = "Ошибка скачивания видео: файл не создан"
-        if request.form.get("url"):  # Browser request
+        if request.form.get("url"):  # Запрос из браузера
             session['error_message'] = error_msg
             return redirect(url_for('index'))
-        else:  # API request
+        else:  # API запрос
             return jsonify({"error": error_msg}), 500
 
-    # Success handling
-    if request.form.get("url"):  # Browser request
+    # Обработка успеха
+    if request.form.get("url"):  # Запрос из браузера
         session['success_message'] = "Видео успешно скачано!"
         return redirect(url_for('index'))
-    else:  # API request
+    else:  # API запрос
         return jsonify({"message": "Видео скачано", "file": filename})
 
 
@@ -218,12 +231,12 @@ def upload_pdf():
 
 @app.route("/", methods=["GET"])
 def index():
-    # Get messages from session
+    # Получаем сообщения из сессии
     error_message = session.pop('error_message', None)
     success_message = session.pop('success_message', None)
     logged_in = session.get('logged_in', False)
     
-    # Get PDF files
+    # Получаем PDF файлы
     pdf_files = [f for f in os.listdir(OUTPUT_DIR) if f.endswith(".pdf")]
     pdf_link = f"/output/{pdf_files[-1]}" if pdf_files else None
     
