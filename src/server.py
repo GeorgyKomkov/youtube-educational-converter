@@ -8,6 +8,8 @@ import time
 import logging
 from celery import Celery
 import redis
+from process_video import process_video
+import yt_dlp
 
 logger = logging.getLogger(__name__)
 
@@ -108,12 +110,26 @@ def download_video():
             session['error_message'] = "Не удалось получить ссылку на видео"
             return redirect(url_for('index'))
 
-        # Возвращаем только ссылку и название
-        session['success_message'] = f"Видео '{title}' доступно для скачивания!"
-        session['download_url'] = download_url
+        # Скачиваем видео
+        video_path = os.path.join(VIDEO_DIR, f"{video_id}.mp4")
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': video_path,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([video_url])
+
+        # Запускаем асинхронную обработку
         task = process_video_task.delay(video_path)
-        return jsonify({"task_id": task.id}), 202
+        
+        session['success_message'] = f"Видео '{title}' начало обрабатываться. ID задачи: {task.id}"
+        return jsonify({
+            "task_id": task.id,
+            "message": "Видео поставлено в очередь на обработку"
+        }), 202
+
     except Exception as e:
+        logger.error(f"Ошибка при обработке видео: {e}")
         session['error_message'] = f"Ошибка: {str(e)}"
         return redirect(url_for('index'))
 
