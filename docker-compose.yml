@@ -10,16 +10,18 @@ services:
       - PYTHONUNBUFFERED=1  # Для немедленного вывода логов
       - FLASK_ENV=development  # Добавляем для более подробных логов
       - FLASK_DEBUG=1
+      - PYTHONDONTWRITEBYTECODE=1  # Отключаем кэширование .pyc файлов
     volumes:
       - app_videos:/app/videos
       - app_output:/app/output
       - app_temp:/app/temp
       - app_cache:/app/cache/models
-      - ./client_secrets.json:/app/client_secrets.json:ro
-      - ./api.txt:/app/api.txt:ro
-    restart: unless-stopped  # Изменяем политику перезапуска
+      - ${PWD}/client_secrets.json:/app/client_secrets.json:ro
+      - ${PWD}/api.txt:/app/api.txt:ro
+    restart: "no"  # Временно отключаем автоперезапуск для отладки
     mem_limit: 1024m  # Увеличиваем лимит памяти
     mem_reservation: 512m
+    working_dir: /app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s

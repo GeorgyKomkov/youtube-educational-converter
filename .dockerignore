@@ -1,5 +1,3 @@
-.git
-.gitignore
 __pycache__
 *.pyc
 *.pyo
@@ -20,13 +18,5 @@ coverage.xml
 .env
 .venv
 .DS_Store
-output/
-cache/
-torch/
 
-# Credentials
-client_secrets.json
-token.pickle
-api.txt
-*.key
-*.secret 
+# Оставляем credentials, так как они монтируются через volumes
