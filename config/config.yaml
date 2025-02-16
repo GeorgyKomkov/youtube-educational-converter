@@ -6,8 +6,8 @@ output_dir: "/app/output/"  # Директория для результатов
 model_cache: "/app/cache/models"
 
 transcription:
-  model: "medium"  # Модель Whisper (base, small, medium)
-  use_gpu: true  # Использовать GPU для транскрибации
+  model: "base"  # Модель Whisper (base, small, medium)
+  use_gpu: false     # Использовать GPU для транскрибации
 
 video_processing:
   max_frames: 20  # Максимальное число кадров
