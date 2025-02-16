@@ -22,4 +22,11 @@ coverage.xml
 .DS_Store
 output/
 cache/
-torch/ 
+torch/
+
+# Credentials
+client_secrets.json
+token.pickle
+api.txt
+*.key
+*.secret 

@@ -13,6 +13,19 @@ SERVER_URL = "http://your-server-ip:8080"
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # seconds
 
+def request_with_retry(func):
+    def wrapper(*args, **kwargs):
+        retries = 3
+        for attempt in range(retries):
+            try:
+                return func(*args, **kwargs)
+            except requests.exceptions.RequestException as e:
+                if attempt == retries - 1:
+                    raise
+                time.sleep(2 ** attempt)
+        return None
+    return wrapper
+
 def request_video_download(video_url):
     """Отправить запрос на скачивание видео на сервер"""
     try:
@@ -25,8 +38,11 @@ def request_video_download(video_url):
         else:
             logger.error(f"Ошибка при запросе: {response.status_code}, {response.text}")
             return None
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Ошибка соединения с сервером: {e}")
+    except requests.exceptions.ConnectionError:
+        logger.error("Ошибка подключения к серверу")
+        return None
+    except requests.exceptions.Timeout:
+        logger.error("Таймаут запроса")
         return None
 
 def download_video():

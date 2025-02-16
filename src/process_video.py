@@ -7,15 +7,28 @@ from frame_processor import FrameProcessor
 from output_generator import OutputGenerator
 import yaml
 import whisper
+import logging.config
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO,
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+def setup_logging():
+    try:
+        with open('config/logging.yaml', 'r') as f:
+            config = yaml.safe_load(f)
+        logging.config.dictConfig(config)
+    except Exception as e:
+        # Если не удалось загрузить конфиг, используем базовую настройку
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+
+# Инициализация логгера
+setup_logging()
 logger = logging.getLogger(__name__)
 
 def load_config():
     """Загрузка конфигурации из YAML файла"""
-    config_path = os.path.join('config', 'config.yaml')
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'config.yaml')
     if not os.path.exists(config_path):
         logger.warning(f"Файл конфигурации {config_path} не найден, используем значения по умолчанию")
         return {

@@ -12,7 +12,7 @@ COPY requirements.txt .
 
 # Устанавливаем системные зависимости (FFmpeg нужен для обработки аудио)
 RUN apt-get update && apt-get install -y \
-    libsndfile1 ffmpeg && \
+    libsndfile1 ffmpeg wkhtmltopdf && \
     rm -rf /var/lib/apt/lists/*
 
 # Устанавливаем Python-зависимости поэтапно (ускоряет кеширование)

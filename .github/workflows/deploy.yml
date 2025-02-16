@@ -64,3 +64,8 @@ jobs:
         run: |
           echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
           echo '${{ secrets.YOUTUBE_API_KEY }}' > api.txt
+
+      - name: Verify deployment
+        run: |
+          sleep 10  # Даем время на запуск
+          curl --fail http://${{ secrets.SSH_HOST }}:8080/health || exit 1

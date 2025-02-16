@@ -21,10 +21,14 @@ class FrameProcessor:
         # Инициализация моделей
         self.caption_model = None
         if self.blip_enabled:
+            if torch.cuda.is_available() and not os.environ.get('DISABLE_CUDA'):
+                device = "cuda"
+            else:
+                device = "cpu"
             self.caption_model = pipeline(
                 "image-to-text", 
                 model="Salesforce/blip-image-captioning-base",
-                device="cuda" if torch.cuda.is_available() else "cpu"
+                device=device
             )
 
     def process(self, video_path):

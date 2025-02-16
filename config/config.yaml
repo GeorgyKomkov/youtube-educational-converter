@@ -30,3 +30,11 @@ youtube_api:
   token_file: "token.pickle"
   scopes: 
     - "https://www.googleapis.com/auth/youtube.readonly"
+
+network:
+  timeout: 300  # Таймаут для сетевых запросов
+  retries: 3    # Количество попыток
+
+storage:
+  cleanup_interval: 3600  # Интервал очистки временных файлов
+  max_file_age: 86400    # Максимальное время хранения файлов

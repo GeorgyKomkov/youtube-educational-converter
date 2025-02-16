@@ -5,6 +5,7 @@ import pdfkit
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
+import shutil
 
 class OutputGenerator:
     def __init__(self, output_dir):
@@ -12,6 +13,8 @@ class OutputGenerator:
         self.logger = logging.getLogger(__name__)
         self.text_model = SentenceTransformer('all-MiniLM-L6-v2')
         os.makedirs(output_dir, exist_ok=True)
+        if not shutil.which('wkhtmltopdf'):
+            raise RuntimeError("wkhtmltopdf не установлен")
 
     def generate(self, data):
         """Создаёт Markdown и PDF-файл на основе транскрибации и ключевых кадров"""
