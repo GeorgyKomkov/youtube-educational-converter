@@ -9,7 +9,7 @@ COPY requirements.txt .
 
 # Устанавливаем системные зависимости и очищаем кеш APT
 RUN apt-get update && apt-get install -y \
-    libsndfile1 ffmpeg && \
+    libsndfile1 ffmpeg wkhtmltopdf && \
     rm -rf /var/lib/apt/lists/*
 
 # Устанавливаем Python-зависимости без кеширования
@@ -27,6 +27,12 @@ COPY . .
 
 # Делаем стартовый скрипт исполняемым
 RUN chmod +x start.sh
+
+# Устанавливаем переменные окружения
+ENV PYTHONPATH="/app/src"
+
+# Открываем порт
+EXPOSE 8080
 
 # Запускаем приложение
 CMD ["./start.sh"]
