@@ -25,8 +25,11 @@ ENV OMP_NUM_THREADS=1
 # Копируем весь проект
 COPY . .
 
-# Делаем стартовый скрипт исполняемым
+# Исправляем проблему Windows CRLF → LF
+RUN sed -i 's/\r$//' /app/start.sh
+
+# Делаем `start.sh` исполняемым
 RUN chmod +x /app/start.sh
 
-# Запускаем приложение через Bash (исправлена ошибка "no such file or directory")
+# Запускаем через `bash`, чтобы избежать ошибки `no such file or directory`
 CMD ["/bin/bash", "/app/start.sh"]
