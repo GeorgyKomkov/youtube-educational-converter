@@ -1,39 +1,39 @@
-# Используем официальный образ Python 3.10
-FROM python:3.10
+# Используем официальный образ Python 3.9-slim
+FROM python:3.9-slim
 
 # Устанавливаем рабочую директорию
 WORKDIR /app
+
+# Устанавливаем системные зависимости
+RUN apt-get update && apt-get install -y \
+    curl \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копируем файл зависимостей
+COPY requirements.txt .
+
+# Устанавливаем Python-зависимости
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копируем весь проект
+COPY . .
 
 # Создаём директорию для хранения видео и даём нужные права
 RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models && \
     chmod 777 /app/videos /app/output /app/temp /app/cache/models
 
-# Копируем файл зависимостей
-COPY requirements.txt .
+# Проверяем наличие файлов конфигурации
+RUN test -f /app/client_secrets.json || echo "Warning: client_secrets.json not found"
+RUN test -f /app/api.txt || echo "Warning: api.txt not found"
 
-# Устанавливаем системные зависимости (FFmpeg нужен для обработки аудио)
-RUN apt-get update && apt-get install -y \
-    libsndfile1 ffmpeg wkhtmltopdf curl && \
-    rm -rf /var/lib/apt/lists/*
+# Устанавливаем переменные окружения
+ENV PYTHONUNBUFFERED=1
+ENV FLASK_APP=src/server.py
 
-# Устанавливаем Python-зависимости поэтапно (ускоряет кеширование)
-RUN pip install --no-cache-dir flask yt-dlp requests pydub
-RUN pip install --no-cache-dir numpy opencv-python
-RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-RUN pip install --no-cache-dir openai-whisper transformers
+# Проверяем работоспособность
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
 
-# Отключаем многопоточность, чтобы снизить нагрузку на слабый сервер
-ENV TOKENIZERS_PARALLELISM=false
-ENV OMP_NUM_THREADS=1
-
-# Копируем весь проект
-COPY . .
-
-# Исправляем проблему Windows CRLF → LF
-RUN sed -i 's/\r$//' /app/start.sh
-
-# Делаем `start.sh` исполняемым
-RUN chmod +x /app/start.sh
-
-# Запускаем через `bash`, чтобы избежать ошибки `no such file or directory`
-CMD ["/bin/bash", "/app/start.sh"]
+# Запускаем приложение
+CMD ["python", "src/server.py"]

@@ -51,26 +51,29 @@ jobs:
             echo "Waiting for container to initialize..."
             sleep 45
             
-            echo "Container logs:"
-            docker logs youtube-converter-server-1
+            echo "Docker logs:"
+            docker-compose logs
             
             echo "Container status:"
             docker ps -a
             
-            echo "Verifying mounted files:"
-            docker exec youtube-converter-server-1 ls -la /app/client_secrets.json /app/api.txt || true
+            echo "Memory usage:"
+            free -h
+            
+            echo "Disk space:"
+            df -h
 
       - name: Verify deployment
         run: |
-          sleep 45
+          sleep 60
           for i in {1..5}; do
             echo "Attempt $i: Checking server status..."
-            if curl -v --fail http://${{ secrets.SSH_HOST }}:8080/health; then
+            if curl -v --fail --max-time 30 http://${{ secrets.SSH_HOST }}:8080/health; then
               echo "Service is up and running!"
               exit 0
             fi
             echo "Attempt $i failed, waiting..."
-            sleep 15
+            sleep 30
           done
           echo "Service failed to start properly"
           exit 1
