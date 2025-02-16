@@ -22,11 +22,11 @@ RUN pip install --no-cache-dir openai-whisper transformers
 ENV TOKENIZERS_PARALLELISM=false
 ENV OMP_NUM_THREADS=1
 
-# Копируем весь проект в контейнер
+# Копируем весь проект
 COPY . .
 
 # Делаем стартовый скрипт исполняемым
-RUN chmod +x start.sh
+RUN chmod +x /app/start.sh
 
-# Запускаем приложение
-CMD ["./start.sh"]
+# Запускаем приложение через Bash (исправлена ошибка "no such file or directory")
+CMD ["/bin/bash", "/app/start.sh"]
