@@ -40,14 +40,14 @@ services:
       - ${PWD}/client_secrets.json:/app/client_secrets.json:ro
       - ${PWD}/api.txt:/app/api.txt:ro
     restart: unless-stopped
-    mem_reservation: 1024m
+    mem_reservation: 512m
     working_dir: /app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
+      interval: 10s
+      timeout: 5s
       retries: 3
-      start_period: 40s
+      start_period: 30s
     logging:
       driver: "json-file"
       options:
@@ -61,12 +61,12 @@ services:
       - redis
     networks:
       - app_network
-    mem_limit: 512m
+    mem_limit: 768m
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 512M
+          cpus: '0.4'
+          memory: 768M
 
   worker:
     build: .
@@ -85,12 +85,12 @@ services:
       - C_FORCE_ROOT=true
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
-    mem_limit: 512m
+    mem_limit: 768m
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 512M
+          cpus: '0.4'
+          memory: 768M
     networks:
       - app_network
 
