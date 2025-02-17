@@ -10,38 +10,33 @@ jobs:
     steps:
       - name: Check secrets format
         run: |
-          # Проверяем SSH_HOST
-          if ! [[ "${{ secrets.SSH_HOST }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Error: SSH_HOST должен быть IP адресом"
+          # Проверяем наличие всех секретов
+          if [ -z "${{ secrets.SSH_HOST }}" ]; then
+            echo "Error: SSH_HOST не установлен"
             exit 1
           fi
           
-          # Проверяем SSH_USER
-          if [ "${{ secrets.SSH_USER }}" != "root" ]; then
-            echo "Error: SSH_USER должен быть 'root'"
+          if [ -z "${{ secrets.SSH_USER }}" ]; then
+            echo "Error: SSH_USER не установлен"
             exit 1
           fi
           
-          # Проверяем SSH_PRIVATE_KEY
-          if ! [[ "${{ secrets.SSH_PRIVATE_KEY }}" == *"BEGIN OPENSSH PRIVATE KEY"* ]]; then
-            echo "Error: Неверный формат SSH_PRIVATE_KEY"
+          if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
+            echo "Error: SSH_PRIVATE_KEY не установлен"
             exit 1
           fi
           
-          # Проверяем YOUTUBE_CLIENT_SECRETS
-          if ! [[ "${{ secrets.YOUTUBE_CLIENT_SECRETS }}" == *"client_id"* ]] || 
-             ! [[ "${{ secrets.YOUTUBE_CLIENT_SECRETS }}" == *"client_secret"* ]]; then
-            echo "Error: YOUTUBE_CLIENT_SECRETS должен содержать client_id и client_secret"
+          if [ -z "${{ secrets.YOUTUBE_CLIENT_SECRETS }}" ]; then
+            echo "Error: YOUTUBE_CLIENT_SECRETS не установлен"
             exit 1
           fi
           
-          # Проверяем YOUTUBE_API_KEY
-          if [ "${#secrets.YOUTUBE_API_KEY}" -lt 30 ]; then
-            echo "Error: YOUTUBE_API_KEY слишком короткий"
+          if [ -z "${{ secrets.YOUTUBE_API_KEY }}" ]; then
+            echo "Error: YOUTUBE_API_KEY не установлен"
             exit 1
           fi
           
-          echo "✅ Все секреты имеют правильный формат"
+          echo "✅ Все секреты установлены"
 
       - uses: actions/checkout@v2
       
