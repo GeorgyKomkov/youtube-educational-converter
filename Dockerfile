@@ -16,6 +16,10 @@ COPY requirements.txt .
 # Устанавливаем Python-зависимости
 RUN pip install --no-cache-dir -r requirements.txt
 
+# После установки зависимостей
+RUN python -c "import torch; import whisper; import flask" || \
+    (echo "Failed to import required modules" && exit 1)
+
 # Копируем весь проект
 COPY . .
 

@@ -1,26 +1,40 @@
-from flask import Flask, request, jsonify, render_template_string, send_file, redirect, session, url_for
+from flask import (
+    Flask, 
+    request, 
+    jsonify, 
+    render_template_string, 
+    redirect, 
+    session, 
+    url_for
+)
 import os
 import secrets
 import threading
-from src.youtube_api import YouTubeAPI
+try:
+    from src.youtube_api import YouTubeAPI
+    from src.process_video import process_video
+except ImportError as e:
+    print(f"Error importing modules: {e}")
+    print(f"PYTHONPATH: {os.environ.get('PYTHONPATH')}")
+    print(f"Current directory: {os.getcwd()}")
+    print(f"Directory contents: {os.listdir('.')}")
+    raise
 from datetime import datetime
 import time
 import logging
 from celery import Celery
 import redis
-from src.process_video import process_video
 import yt_dlp
 import sys
 
 logger = logging.getLogger(__name__)
 
+VIDEO_DIR = "/app/videos"
+OUTPUT_DIR = "/app/output"
+
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)  # Для управления сессиями
 
-VIDEO_DIR = "/app/videos"
-OUTPUT_DIR = "/app/output"
-os.makedirs(VIDEO_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # 🔹 HTML-страница
 HTML_PAGE = """
@@ -65,17 +79,19 @@ HTML_PAGE = """
 
 youtube_api = YouTubeAPI()
 
-MAX_VIDEO_SIZE = 500 * 1024 * 1024  # 500MB
-
-# Создаем приложение Celery
-celery = Celery('youtube_converter')
-celery.conf.update({
-    'broker_url': 'redis://redis:6379/0',
-    'result_backend': 'redis://redis:6379/0',
-    'task_serializer': 'json',
-    'result_serializer': 'json',
-    'accept_content': ['json']
-})
+# Создаем приложение Celery с обработкой ошибок
+try:
+    celery = Celery('youtube_converter')
+    celery.conf.update({
+        'broker_url': 'redis://redis:6379/0',
+        'result_backend': 'redis://redis:6379/0',
+        'task_serializer': 'json',
+        'result_serializer': 'json',
+        'accept_content': ['json']
+    })
+except Exception as e:
+    logger.error(f"Failed to initialize Celery: {e}")
+    raise
 
 redis_client = redis.Redis(host='redis', port=6379, db=0)
 
@@ -85,6 +101,7 @@ def process_video_task(video_path):
 
 @app.route("/", methods=["GET"])
 def index():
+    logger.debug("Запрошена главная страница")
     # Получаем сообщения из сессии
     error_message = session.pop('error_message', None)
     success_message = session.pop('success_message', None)
@@ -97,6 +114,7 @@ def index():
 
 @app.route('/auth')
 def auth():
+    logger.info("Начата OAuth аутентификация")
     """Инициирует OAuth2 аутентификацию"""
     try:
         youtube_api.authenticate()
@@ -107,12 +125,15 @@ def auth():
 
 @app.route("/download", methods=["POST"])
 def download_video():
+    logger.info("Получен запрос на скачивание видео")
     video_url = request.form.get("url")
     
     if not video_url:
+        logger.warning("URL не предоставлен")
         return jsonify({"error": "URL обязателен"}), 400
 
     try:
+        logger.info(f"Начинаем обработку видео: {video_url}")
         video_id = video_url.split("v=")[-1]
         download_url, title = youtube_api.get_download_url(video_id)
 
@@ -152,6 +173,7 @@ def health_check():
     }), 200
 
 def cleanup_old_files():
+    logger.info("Запущена очистка старых файлов")
     """Очистка старых временных файлов"""
     while True:
         try:
@@ -177,7 +199,25 @@ def check_redis():
         logger.error(f"Failed to connect to Redis: {e}")
         return False
 
+def ensure_directories():
+    """Проверяет и создает необходимые директории"""
+    directories = [
+        VIDEO_DIR,
+        OUTPUT_DIR,
+        "/app/temp",
+        "/app/cache/models",
+        "/app/logs"
+    ]
+    for directory in directories:
+        try:
+            os.makedirs(directory, exist_ok=True)
+            logger.info(f"Directory {directory} is ready")
+        except Exception as e:
+            logger.error(f"Failed to create directory {directory}: {e}")
+            raise
+
 if __name__ == "__main__":
+    ensure_directories()  # Добавляем проверку директорий
     port = int(os.environ.get("PORT", 8080))
     host = os.environ.get("HOST", "0.0.0.0")
     

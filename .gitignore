@@ -4,3 +4,14 @@ token.pickle
 api.txt
 *.key
 *.secret
+
+# Временные файлы
+/videos/
+/output/
+/temp/
+/cache/
+/logs/
+*.log
+*.pyc
+__pycache__/
+.pytest_cache/

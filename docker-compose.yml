@@ -86,6 +86,7 @@ services:
       - C_FORCE_ROOT=true
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
+      - PYTHONPATH=/app
     mem_limit: 768m
     deploy:
       resources:

@@ -98,9 +98,16 @@ jobs:
             df -h
 
       - name: Verify deployment
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
+          # Создаем временный ключ для SSH
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          
           # Увеличиваем время ожидания
-          sleep 180  # Даем больше времени на запуск
+          sleep 180
           
           for i in {1..5}; do
             echo "Attempt $i: Checking server status..."
@@ -111,19 +118,23 @@ jobs:
             
             # Проверяем логи при неудаче
             echo "Attempt $i failed. Checking logs..."
-            ssh -i ~/.ssh/id_ed25519 root@${{ secrets.SSH_HOST }} '
+            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@${{ secrets.SSH_HOST }} '
               cd /root/youtube-converter && 
+              echo "Container status:" &&
+              docker-compose ps &&
+              echo "\nServer logs:" &&
               docker-compose logs server &&
-              docker-compose ps
+              echo "\nWorker logs:" &&
+              docker-compose logs worker
             '
             
             echo "Waiting before next attempt..."
-            sleep 60  # Увеличиваем интервал между попытками
+            sleep 60
           done
           
           echo "Service failed to start properly"
           echo "Final container status and logs:"
-          ssh -i ~/.ssh/id_ed25519 root@${{ secrets.SSH_HOST }} '
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@${{ secrets.SSH_HOST }} '
             cd /root/youtube-converter &&
             docker-compose ps &&
             docker-compose logs
