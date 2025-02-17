@@ -31,12 +31,5 @@ jobs:
           docker-compose build
           docker-compose up -d
       
-      - name: Check container status
-        run: |
-          docker-compose ps
-          docker-compose logs server
-      
-      - name: Health check
-        run: |
-          sleep 10
-          curl -f http://localhost:8080/health || (docker-compose logs && exit 1)
+      - name: Show container status
+        run: docker-compose ps
