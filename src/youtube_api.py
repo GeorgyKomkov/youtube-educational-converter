@@ -4,6 +4,7 @@ import logging
 import redis
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+import yt_dlp
 
 class YouTubeAPI:
     def __init__(self):
@@ -46,47 +47,23 @@ class YouTubeAPI:
             raise
 
     def get_video_info(self, video_id):
-        """Получает информацию о видео"""
-        cache_key = f"video_info:{video_id}"
         try:
-            # Проверяем кэш
-            cached_info = self.redis_client.get(cache_key)
-            if cached_info:
-                return json.loads(cached_info), None
+            cookies_path = os.path.join('config', 'youtube.cookies')
+            if not os.path.exists(cookies_path):
+                self.logger.error(f"Cookies file not found at {cookies_path}")
+                return None, "Cookies file not found"
 
-            request = self.youtube.videos().list(
-                part="snippet,contentDetails,fileDetails",
-                id=video_id
-            )
-            response = request.execute()
-            
-            if not response.get('items'):
-                return None, "Video not found"
-                
-            video_info = response['items'][0]
-            
-            # Проверяем размер файла
-            if 'fileDetails' in video_info:
-                size_mb = int(video_info['fileDetails']['fileSizeBytes']) / (1024 * 1024)
-                if size_mb > 100:  # Ограничение 100MB
-                    return None, "Видео слишком большое"
-
-            info = {
-                'title': video_info['snippet']['title'],
-                'duration': video_info['contentDetails']['duration'],
-                'description': video_info['snippet']['description']
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'cookiefile': cookies_path
             }
             
-            # Кэшируем результат на 1 час
-            self.redis_client.setex(cache_key, 3600, json.dumps(info))
-            return info, None
-            
-        except HttpError as e:
-            error_msg = f"YouTube API error: {e.resp.status} - {e.content}"
-            self.logger.error(error_msg)
-            return None, error_msg
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+                return info, None
         except Exception as e:
-            self.logger.error(f"Unexpected error: {e}")
+            self.logger.error(f"Error getting video info: {str(e)}")
             return None, str(e)
 
     def get_download_url(self, video_id):

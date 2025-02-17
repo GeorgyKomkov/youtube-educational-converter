@@ -1,0 +1,14 @@
+[
+  {
+    "domain": ".youtube.com",
+    "expirationDate": 1735689600,
+    "hostOnly": false,
+    "httpOnly": true,
+    "name": "CONSENT",
+    "path": "/",
+    "sameSite": "unspecified",
+    "secure": true,
+    "session": false,
+    "value": "YES+cb"
+  }
+]
