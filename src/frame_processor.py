@@ -5,6 +5,10 @@ import numpy as np
 from PIL import Image
 import torch
 from transformers import pipeline
+import time
+import shutil
+from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer
 
 class FrameProcessor:
     def __init__(self, output_dir, max_frames=100, mode='scenes', 
@@ -30,6 +34,31 @@ class FrameProcessor:
                 model="Salesforce/blip-image-captioning-base",
                 device=device
             )
+        
+        # Добавить загрузку конфигурации
+        self.config = self._load_config()
+        # Добавить проверку свободного места
+        self._check_disk_space()
+        
+        # Добавить очистку временных файлов
+        self._cleanup_old_files()
+
+    def _cleanup_old_files(self):
+        """Очистка старых временных файлов"""
+        try:
+            screenshots_dir = os.path.join(self.output_dir, 'screenshots')
+            for file in os.listdir(screenshots_dir):
+                file_path = os.path.join(screenshots_dir, file)
+                if os.path.getctime(file_path) < (time.time() - 86400):  # Старше 24 часов
+                    os.remove(file_path)
+        except Exception as e:
+            self.logger.warning(f"Ошибка при очистке файлов: {e}")
+
+    def _check_disk_space(self):
+        """Проверка свободного места на диске"""
+        free_space = shutil.disk_usage(self.output_dir).free / (1024 * 1024)  # MB
+        if free_space < self.config['min_free_space']:
+            raise RuntimeError(f"Недостаточно места на диске: {free_space}MB")
 
     def process(self, video_path):
         try:
@@ -98,9 +127,76 @@ class FrameProcessor:
             return "Кадр из видео"
 
     def _get_image_embedding(self, image):
-        # Реализация получения эмбеддинга изображения
-        pass
+        """
+        Получает эмбеддинг изображения используя предобученную модель
+        
+        Args:
+            image (PIL.Image): Входное изображение
+            
+        Returns:
+            numpy.ndarray: Эмбеддинг изображения
+        """
+        try:
+            # Используем ту же модель BLIP для эмбеддингов
+            if not hasattr(self, 'embedding_model'):
+                self.embedding_model = SentenceTransformer('clip-ViT-B-32')
+            
+            # Преобразуем изображение в тензор
+            image_embedding = self.embedding_model.encode(
+                image, 
+                convert_to_tensor=True,
+                show_progress_bar=False
+            )
+            
+            # Преобразуем в numpy массив для сохранения
+            return image_embedding.cpu().numpy()
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка при получении эмбеддинга: {e}")
+            # Возвращаем нулевой вектор в случае ошибки
+            return np.zeros(512)  # CLIP возвращает 512-мерные векторы
 
     def _select_most_relevant_frames(self, frames):
-        # Алгоритм выбора наиболее уникальных кадров
-        return frames
+        """
+        Выбирает наиболее релевантные и разнообразные кадры
+        
+        Args:
+            frames (list): Список кадров с их эмбеддингами
+            
+        Returns:
+            list: Отфильтрованный список кадров
+        """
+        try:
+            if len(frames) <= self.max_frames:
+                return frames
+            
+            # Получаем эмбеддинги всех кадров
+            embeddings = np.array([frame['embedding'] for frame in frames])
+            
+            # Вычисляем матрицу схожести между кадрами
+            similarity_matrix = cosine_similarity(embeddings)
+            
+            # Инициализируем список выбранных кадров первым кадром
+            selected_indices = [0]
+            
+            # Выбираем кадры с наименьшей схожестью с уже выбранными
+            while len(selected_indices) < self.max_frames:
+                # Вычисляем максимальную схожесть для каждого кадра с выбранными
+                max_similarities = np.max(similarity_matrix[selected_indices][:, :], axis=0)
+                
+                # Выбираем кадр с наименьшей схожестью
+                remaining_indices = list(set(range(len(frames))) - set(selected_indices))
+                next_frame_idx = remaining_indices[np.argmin(max_similarities[remaining_indices])]
+                
+                selected_indices.append(next_frame_idx)
+            
+            # Сортируем по времени
+            selected_indices.sort()
+            
+            self.logger.info(f"Отобрано {len(selected_indices)} кадров из {len(frames)}")
+            return [frames[i] for i in selected_indices]
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка при выборе кадров: {e}")
+            # В случае ошибки возвращаем первые max_frames кадров
+            return frames[:self.max_frames]

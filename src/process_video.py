@@ -3,9 +3,9 @@ import sys
 import logging
 import torch
 from os import statvfs
-from audio_extractor import AudioExtractor
-from frame_processor import FrameProcessor
-from output_generator import OutputGenerator
+from src.audio_extractor import AudioExtractor
+from src.frame_processor import FrameProcessor
+from src.output_generator import OutputGenerator
 import yaml
 import whisper
 import logging.config
@@ -78,32 +78,26 @@ def cleanup_temp(temp_dir):
 
 def process_video(video_path):
     try:
-        # Инициализируем конфигурацию при первом вызове
-        if config is None:
-            init_config()
-            
-        # Проверка размера
-        if os.path.getsize(video_path) > config['memory']['max_video_size'] * 1024 * 1024:
-            raise ValueError("Видео слишком большое")
-            
-        # Очистка перед началом
-        cleanup_temp(config['temp_dir'])
+        temp_dir = "/app/temp"
+        # Инициализация с temp_dir
+        audio_extractor = AudioExtractor(temp_dir)
+        frame_processor = FrameProcessor()
+        output_generator = OutputGenerator()
+
+        # Извлечение аудио
+        audio_path = audio_extractor.extract(video_path)
         
-        # Обработка по частям
-        audio_path = extract_audio(video_path, config)
-        cleanup_temp(config['temp_dir'])
+        # Обработка кадров
+        frames = frame_processor.process(video_path)
         
-        transcription = transcribe_audio(audio_path, config)
-        cleanup_temp(config['temp_dir'])
+        # Генерация выходного файла
+        output_path = output_generator.generate(audio_path, frames)
         
-        frames = extract_frames(video_path, config)
-        cleanup_temp(config['temp_dir'])
+        return output_path
         
-        pdf_path = generate_pdf(transcription, frames, video_path, config)
-        return pdf_path
-        
-    finally:
-        cleanup_temp(config['temp_dir'])
+    except Exception as e:
+        logger.error(f"Error processing video: {e}")
+        raise
 
 def extract_audio(video_path, config):
     """Извлечение аудио из видео"""
@@ -120,13 +114,42 @@ def transcribe_audio(audio_path, config):
     return result['segments']
 
 def extract_frames(video_path, config):
-    """Извлечение кадров из видео"""
-    frame_processor = FrameProcessor(
-        config['output_dir'],
-        max_frames=config['video_processing']['max_frames'],
-        mode=config['video_processing']['frame_mode']
-    )
-    return frame_processor.process(video_path)
+    """
+    Извлечение и обработка кадров из видео
+    
+    Args:
+        video_path (str): Путь к видеофайлу
+        config (dict): Конфигурация
+        
+    Returns:
+        list: Список обработанных кадров
+    """
+    try:
+        frame_processor = FrameProcessor(
+            config['output_dir'],
+            max_frames=config['video_processing']['max_frames'],
+            mode=config['video_processing']['frame_mode'],
+            blip_enabled=config['blip']['enabled']
+        )
+        
+        # Проверяем размер видео
+        video_size = os.path.getsize(video_path) / (1024 * 1024)  # MB
+        if video_size > config['memory']['max_video_size']:
+            raise ValueError(f"Видео слишком большое: {video_size}MB")
+        
+        # Извлекаем и обрабатываем кадры
+        frames = frame_processor.process(video_path)
+        
+        # Проверяем результат
+        if not frames:
+            raise ValueError("Не удалось извлечь кадры из видео")
+            
+        logger.info(f"Успешно извлечено {len(frames)} кадров")
+        return frames
+        
+    except Exception as e:
+        logger.error(f"Ошибка при извлечении кадров: {e}")
+        raise
 
 def generate_pdf(transcription, frames, video_path, config):
     """Генерация PDF документа"""

@@ -8,25 +8,24 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     curl \
     ffmpeg \
+    wkhtmltopdf \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Копируем файл зависимостей
+# Копируем файлы проекта
 COPY requirements.txt .
+COPY src/ /app/src/
+COPY config/ /app/config/
 
 # Устанавливаем Python-зависимости
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Устанавливаем gunicorn
+RUN pip install gunicorn
+
 # Создаём директории
 RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models /app/logs && \
     chmod -R 777 /app/videos /app/output /app/temp /app/cache /app/logs
-
-# Копируем весь проект
-COPY . .
-
-# Проверяем наличие файлов конфигурации
-RUN ls -la /app && \
-    test -d /app/src || (echo "Source directory not found" && exit 1)
 
 # Устанавливаем переменные окружения
 ENV PYTHONUNBUFFERED=1
@@ -35,9 +34,5 @@ ENV PYTHONPATH=/app
 
 EXPOSE 8080
 
-# Проверяем работоспособность
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
-
-# Запускаем приложение
-CMD ["python", "src/server.py"]
+# Убираем HEALTHCHECK, так как он теперь в docker-compose
+# Убираем CMD, так как он теперь в docker-compose

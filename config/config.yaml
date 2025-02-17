@@ -7,26 +7,30 @@ video_dir: '/app/videos'
 model_cache: "/app/cache/models"
 
 memory:
-  max_video_size: 50  # MB
-  chunk_size: 1  # MB
-  cleanup_interval: 30  # seconds
+  max_video_size: 50
+  chunk_size: 1
+  cleanup_interval: 30
+  emergency_cleanup_threshold: 85
 
 transcription:
   model: 'tiny'
   use_gpu: false
   batch_size: 1
+  chunk_duration: 30
 
 video_processing:
-  max_frames: 10  # Уменьшаем количество кадров
+  max_frames: 10
   frame_mode: 'interval'
-  frame_interval: 60  # Увеличиваем интервал
+  frame_interval: 60
+  max_resolution: '720p'
 
 blip:
   enabled: false  # Отключаем генерацию описаний кадров через BLIP
 
 parallel_processing:
-  enabled: false  # Отключаем параллельную обработку видео и аудио (слабый сервер)
-  max_workers: 1  # Только 1 поток (экономим ресурсы)
+  enabled: false
+  max_workers: 1
+  queue_size: 2
 
 server:
   host: "0.0.0.0"

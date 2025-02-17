@@ -3,13 +3,17 @@ import subprocess
 import os
 import time
 import logging
+import yaml
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-SERVER_URL = "http://your-server-ip:8080"
+# Добавить конфигурацию
+config = yaml.safe_load(open('config/config.yaml'))
+SERVER_URL = config['server']['url']
+
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # seconds
 
@@ -83,15 +87,18 @@ def process_video():
     
     try:
         logger.info("Начинаем обработку видео...")
-        command = "python3 src/process_video.py video.mp4"
-        result = subprocess.run(command, shell=True, check=True, 
-                               capture_output=True, text=True)
+        command = ["python3", "src/process_video.py", "video.mp4"]
+        result = subprocess.run(
+            command,
+            shell=False,
+            check=True,
+            capture_output=True,
+            text=True
+        )
         logger.info("Видео успешно обработано")
         return True
     except subprocess.SubprocessError as e:
         logger.error(f"Ошибка при обработке видео: {e}")
-        if hasattr(e, 'stderr'):
-            logger.error(f"Stderr: {e.stderr}")
         return False
 
 def upload_pdf(pdf_path):

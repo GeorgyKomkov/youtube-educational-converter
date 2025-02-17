@@ -10,30 +10,34 @@ services:
     restart: unless-stopped
     networks:
       - app_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   server:
     build: .
     ports:
       - "8080:8080"
-    environment:
-      - PORT=8080
-      - PYTHONUNBUFFERED=1
-      - FLASK_APP=src.server
-      - FLASK_ENV=development
-      - FLASK_DEBUG=1
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - PYTHONPATH=/app
     volumes:
+      - ./src:/app/src
+      - ./config:/app/config
       - ./videos:/app/videos
       - ./output:/app/output
       - ./temp:/app/temp
-      - ./cache:/app/cache/models
       - ./logs:/app/logs
       - ./client_secrets.json:/app/client_secrets.json:ro
       - ./api.txt:/app/api.txt:ro
-    working_dir: /app
-    command: python -m flask run --host=0.0.0.0 --port=8080
+    environment:
+      - PYTHONPATH=/app
+      - FLASK_APP=src.server
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    command: gunicorn --workers=2 --threads=4 --bind 0.0.0.0:8080 src.server:app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health || exit 1"]
       interval: 30s
@@ -43,27 +47,45 @@ services:
       - redis
     networks:
       - app_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 384M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
 
   worker:
     build: .
-    command: celery -A src.server.celery worker --loglevel=info
     volumes:
+      - ./src:/app/src
+      - ./config:/app/config
       - ./videos:/app/videos
       - ./output:/app/output
       - ./temp:/app/temp
-      - ./cache:/app/cache/models
       - ./logs:/app/logs
       - ./client_secrets.json:/app/client_secrets.json:ro
       - ./api.txt:/app/api.txt:ro
     environment:
-      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
-      - PYTHONPATH=/app
+    command: celery -A src.server.celery worker --loglevel=info
     depends_on:
       - redis
     networks:
       - app_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 384M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
 
 volumes:
   redis_data:

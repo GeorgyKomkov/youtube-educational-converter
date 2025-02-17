@@ -1,27 +1,16 @@
-.git
-.gitignore
-.env
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-.pytest_cache/
-.env
-.venv
-.DS_Store
+# Credentials
+client_secrets.json
+token.pickle
+api.txt
+*.key
+*.secret
 
-# Оставляем credentials, так как они монтируются через volumes
+# Временные файлы и директории
+/videos/
+/output/
+/temp/
+/cache/
+/logs/
+*.log
+*.pyc
+__pycache__/

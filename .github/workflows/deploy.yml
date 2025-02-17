@@ -8,150 +8,29 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Check secrets format
-        run: |
-          # Проверяем наличие всех секретов
-          if [ -z "${{ secrets.SSH_HOST }}" ]; then
-            echo "Error: SSH_HOST не установлен"
-            exit 1
-          fi
-          
-          if [ -z "${{ secrets.SSH_USER }}" ]; then
-            echo "Error: SSH_USER не установлен"
-            exit 1
-          fi
-          
-          if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
-            echo "Error: SSH_PRIVATE_KEY не установлен"
-            exit 1
-          fi
-          
-          if [ -z "${{ secrets.YOUTUBE_CLIENT_SECRETS }}" ]; then
-            echo "Error: YOUTUBE_CLIENT_SECRETS не установлен"
-            exit 1
-          fi
-          
-          if [ -z "${{ secrets.YOUTUBE_API_KEY }}" ]; then
-            echo "Error: YOUTUBE_API_KEY не установлен"
-            exit 1
-          fi
-          
-          echo "✅ Все секреты установлены"
-
       - uses: actions/checkout@v2
       
-      - name: Copy project files
-        uses: appleboy/scp-action@master
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "."
-          target: "/root/youtube-converter"
-      
-      - name: Deploy application
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd /root/youtube-converter
-            
-            # Проверяем docker-compose
-            echo "Docker compose version:"
-            docker-compose --version
-            
-            echo "Checking directory contents:"
-            ls -la
-            
-            echo "Checking docker-compose.yml:"
-            cat docker-compose.yml
-            
-            # Создаем credentials
-            echo "Creating credentials files..."
-            echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
-            echo '${{ secrets.YOUTUBE_API_KEY }}' > api.txt
-            chmod 644 client_secrets.json api.txt
-            
-            echo "Cleaning up Docker aggressively..."
-            # Остановить все контейнеры
-            docker stop $(docker ps -aq) || true
-            
-            # Удалить все контейнеры
-            docker rm $(docker ps -aq) || true
-            
-            # Удалить все образы
-            docker rmi $(docker images -q) || true
-            
-            # Удалить все volumes
-            docker volume rm $(docker volume ls -q) || true
-            
-            # Очистить систему
-            docker system prune -af --volumes
-            
-            # Очистить кэш builder
-            docker builder prune -af
-            
-            echo "Checking disk space after cleanup:"
-            df -h
-            
-            echo "Cleaning up temp files..."
-            rm -rf /tmp/* /var/tmp/* || true
-            rm -rf videos/* output/* temp/* || true
-            
-            echo "Checking disk space after temp cleanup:"
-            df -h
-            
-            echo "Building containers..."
-            docker-compose build --no-cache --progress=plain || {
-              echo "Build failed! Showing logs:"
-              docker-compose logs
-              exit 1
-            }
-            
-            echo "Starting containers..."
-            docker-compose up -d || {
-              echo "Start failed! Showing logs:"
-              docker-compose logs
-              exit 1
-            }
-            
-            echo "Waiting for containers..."
-            sleep 30
-            docker-compose ps
-            docker-compose logs
-
-      - name: Verify deployment
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Create required directories
         run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          
-          sleep 180
-          
-          for i in {1..5}; do
-            echo "Attempt $i: Checking server status..."
-            if curl -v --fail --max-time 60 http://${{ secrets.SSH_HOST }}:8080/health; then
-              echo "Service is up and running!"
-              exit 0
-            fi
-            
-            echo "Attempt $i failed. Checking logs..."
-            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} '
-              cd /root/youtube-converter && 
-              echo "Container status:" &&
-              docker-compose ps &&
-              echo "\nServer logs:" &&
-              docker-compose logs server &&
-              echo "\nWorker logs:" &&
-              docker-compose logs worker
-            '
-            
-            sleep 60
-          done
-          
-          echo "Service failed to start properly"
-          exit 1
+          mkdir -p videos output temp cache/models logs
+          chmod -R 777 videos output temp cache logs
+      
+      - name: Build and start containers
+        run: |
+          docker-compose build
+          docker-compose up -d
+      
+      - name: Check container status
+        run: |
+          docker-compose ps
+          docker-compose logs server
+      
+      - name: Health check
+        run: |
+          sleep 10
+          curl -f http://localhost:8080/health || (docker-compose logs && exit 1)
+
+      - name: Setup environment
+        run: |
+          echo "${{ secrets.YOUTUBE_API_KEY }}" > api.txt
+          echo "${{ secrets.CLIENT_SECRETS }}" > client_secrets.json

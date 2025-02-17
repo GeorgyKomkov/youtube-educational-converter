@@ -10,22 +10,19 @@ from flask import (
 import os
 import secrets
 import threading
-try:
-    from src.youtube_api import YouTubeAPI
-    from src.process_video import process_video
-except ImportError as e:
-    print(f"Error importing modules: {e}")
-    print(f"PYTHONPATH: {os.environ.get('PYTHONPATH')}")
-    print(f"Current directory: {os.getcwd()}")
-    print(f"Directory contents: {os.listdir('.')}")
-    raise
+import logging
 from datetime import datetime
 import time
-import logging
 from celery import Celery
 import redis
 import yt_dlp
-import sys
+import psutil
+import yaml
+import shutil
+
+# Импортируем недостающие модули
+from src.youtube_api import YouTubeAPI
+from src.process_video import process_video
 
 # Настройка логирования
 logging.basicConfig(
@@ -36,6 +33,22 @@ logger = logging.getLogger(__name__)
 
 VIDEO_DIR = "/app/videos"
 OUTPUT_DIR = "/app/output"
+
+# Загрузка конфигурации
+def load_config():
+    try:
+        with open('config/config.yaml', 'r') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        logger.error(f"Error loading config: {e}")
+        return {
+            'temp_dir': '/app/temp',
+            'memory': {
+                'emergency_cleanup_threshold': 85
+            }
+        }
+
+config = load_config()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev')
@@ -89,11 +102,17 @@ HTML_PAGE = """
 </html>
 """
 
+# Инициализация YouTube API
 youtube_api = YouTubeAPI()
 
 @celery.task
 def process_video_task(video_path):
-    return process_video(video_path)
+    """Celery задача для обработки видео"""
+    try:
+        return process_video(video_path)
+    except Exception as e:
+        logger.error(f"Ошибка при обработке видео: {e}")
+        raise
 
 @app.route("/", methods=["GET"])
 def index():
@@ -213,6 +232,41 @@ def ensure_directories():
         except Exception as e:
             logger.error(f"Failed to create directory {directory}: {e}")
             raise
+
+def cleanup_temp(temp_dir):
+    """Очистка временных файлов"""
+    try:
+        if os.path.exists(temp_dir):
+            for filename in os.listdir(temp_dir):
+                file_path = os.path.join(temp_dir, filename)
+                try:
+                    if os.path.isfile(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                except Exception as e:
+                    logger.error(f"Error cleaning up {file_path}: {e}")
+        logger.info(f"Cleaned up temporary directory: {temp_dir}")
+    except Exception as e:
+        logger.error(f"Error in cleanup_temp: {e}")
+
+def monitor_resources():
+    while True:
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        
+        logger.info(f"Resource usage: CPU {cpu_percent}%, RAM {memory.percent}%, Disk {disk.percent}%")
+        
+        if memory.percent > config['memory']['emergency_cleanup_threshold'] or disk.percent > 85:
+            logger.warning("Resource usage critical! Performing emergency cleanup...")
+            cleanup_temp(config['temp_dir'])
+            
+        time.sleep(60)  # Проверка каждую минуту
+
+# Запускаем мониторинг в отдельном потоке
+monitor_thread = threading.Thread(target=monitor_resources, daemon=True)
+monitor_thread.start()
 
 if __name__ == "__main__":
     ensure_directories()  # Добавляем проверку директорий

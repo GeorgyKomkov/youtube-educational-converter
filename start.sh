@@ -32,4 +32,11 @@ df -h
 
 echo "Starting Flask server..."
 cd /app
+
+# Проверка переменных окружения
+if [ -z "$YOUTUBE_API_KEY" ]; then
+    echo "ERROR: YOUTUBE_API_KEY not set"
+    exit 1
+fi
+
 exec python3 -m flask --app src.server run --host=0.0.0.0 --port=8080 --debug

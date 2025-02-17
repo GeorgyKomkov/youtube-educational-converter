@@ -10,6 +10,7 @@ MAX_TOKEN_REFRESH_ATTEMPTS = 3
 
 class YouTubeAPI:
     def __init__(self):
+        self.config = self._load_config()
         self.api_key = self._load_api_key()
         self.credentials = None
         self.youtube = None
@@ -17,10 +18,11 @@ class YouTubeAPI:
     def _load_api_key(self):
         """Загрузка API ключа из файла"""
         try:
-            with open('api.txt', 'r') as f:
+            api_key_path = os.getenv('YOUTUBE_API_KEY_PATH', 'api.txt')
+            with open(api_key_path, 'r') as f:
                 return f.read().strip()
         except FileNotFoundError:
-            raise Exception("API key file (api.txt) not found")
+            raise Exception(f"API key file ({api_key_path}) not found")
 
     def authenticate(self):
         """OAuth2 аутентификация"""
@@ -57,25 +59,29 @@ class YouTubeAPI:
         if not self.youtube:
             self.authenticate()
             
-        try:
-            request = self.youtube.videos().list(
-                part="snippet,contentDetails",
-                id=video_id
-            )
-            response = request.execute()
-            
-            if not response.get('items'):
-                return None, "Видео не найдено"
+        retries = self.config['network']['retries']
+        for attempt in range(retries):
+            try:
+                request = self.youtube.videos().list(
+                    part="snippet,contentDetails",
+                    id=video_id
+                )
+                response = request.execute()
                 
-            video_info = response['items'][0]
-            return {
-                'title': video_info['snippet']['title'],
-                'duration': video_info['contentDetails']['duration'],
-                'description': video_info['snippet']['description']
-            }, None
-            
-        except Exception as e:
-            return None, str(e)
+                if not response.get('items'):
+                    return None, "Видео не найдено"
+                    
+                video_info = response['items'][0]
+                return {
+                    'title': video_info['snippet']['title'],
+                    'duration': video_info['contentDetails']['duration'],
+                    'description': video_info['snippet']['description']
+                }, None
+                
+            except Exception as e:
+                if attempt == retries - 1:
+                    return None, str(e)
+                time.sleep(2 ** attempt)
 
     def get_download_url(self, video_id):
         """Получает прямую ссылку на скачивание"""

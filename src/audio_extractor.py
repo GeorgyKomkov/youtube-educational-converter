@@ -1,6 +1,7 @@
 import os
 import logging
-from pydub import AudioSegment
+import subprocess
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -10,21 +11,56 @@ class AudioExtractor:
         os.makedirs(temp_dir, exist_ok=True)
         
     def extract(self, video_path):
-        """Извлекает аудио из видео"""
+        """
+        Извлекает аудио из видео используя ffmpeg
+        
+        Args:
+            video_path (str): Путь к видео файлу
+            
+        Returns:
+            str: Путь к извлеченному аудио файлу
+            
+        Raises:
+            FileNotFoundError: Если видео файл не найден
+            RuntimeError: Если не удалось извлечь аудио
+        """
         try:
             if not os.path.exists(video_path):
                 raise FileNotFoundError(f"Видео файл не найден: {video_path}")
                 
             audio_path = os.path.join(self.temp_dir, 'audio.wav')
             
-            # Используем ffmpeg для извлечения аудио
-            os.system(f'ffmpeg -i "{video_path}" -vn -acodec pcm_s16le -ar 44100 -ac 2 "{audio_path}"')
+            # Используем subprocess для безопасного запуска ffmpeg
+            command = [
+                'ffmpeg',
+                '-i', video_path,
+                '-vn',                # Отключаем видео
+                '-acodec', 'pcm_s16le', # Кодек для WAV
+                '-ar', '44100',      # Частота дискретизации
+                '-ac', '2',          # Количество каналов
+                '-y',                # Перезаписывать существующие файлы
+                audio_path
+            ]
             
-            if not os.path.exists(audio_path):
-                raise Exception("Не удалось извлечь аудио из видео")
+            logger.info(f"Extracting audio from {video_path}")
+            process = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False  # Не вызывать исключение автоматически
+            )
+            
+            if process.returncode != 0:
+                error_msg = process.stderr or "Unknown ffmpeg error"
+                logger.error(f"FFmpeg failed: {error_msg}")
+                raise RuntimeError(f"Failed to extract audio: {error_msg}")
                 
+            if not os.path.exists(audio_path):
+                raise RuntimeError("Audio file was not created")
+                
+            logger.info(f"Audio extracted successfully to {audio_path}")
             return audio_path
             
         except Exception as e:
-            logger.error(f"Ошибка при извлечении аудио: {e}")
+            logger.error(f"Error in audio extraction: {str(e)}")
             raise

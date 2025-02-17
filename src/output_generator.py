@@ -12,6 +12,8 @@ class OutputGenerator:
         self.output_dir = output_dir
         self.logger = logging.getLogger(__name__)
         self.text_model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.config = self._load_config()
+        self._check_dependencies()
         os.makedirs(output_dir, exist_ok=True)
         if not shutil.which('wkhtmltopdf'):
             raise RuntimeError("wkhtmltopdf не установлен")
@@ -66,10 +68,25 @@ class OutputGenerator:
     def _generate_pdf(self, md_path):
         """Конвертирует Markdown в PDF"""
         try:
+            options = {
+                'page-size': 'A4',
+                'margin-top': '20mm',
+                'margin-right': '20mm',
+                'margin-bottom': '20mm',
+                'margin-left': '20mm',
+                'encoding': 'UTF-8'
+            }
+            
             html = markdown2.markdown_path(md_path)
             pdf_path = md_path.replace('.md', '.pdf')
-            pdfkit.from_string(html, pdf_path)
+            pdfkit.from_string(html, pdf_path, options=options)
+            
+            # Проверка размера файла
+            if os.path.getsize(pdf_path) > self.config['pdf']['max_size'] * 1024 * 1024:
+                raise ValueError("PDF файл слишком большой")
+                
             return pdf_path
-        except Exception as e:
-            self.logger.error(f"Ошибка при генерации PDF: {e}")
-            raise
+        finally:
+            # Очистка временных файлов
+            if os.path.exists(md_path):
+                os.remove(md_path)
