@@ -11,32 +11,32 @@ jobs:
       - name: Check secrets format
         run: |
           # Проверяем SSH_HOST
-          if [[ ! ${{ secrets.SSH_HOST }} =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if ! [[ "${{ secrets.SSH_HOST }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Error: SSH_HOST должен быть IP адресом"
             exit 1
           fi
           
           # Проверяем SSH_USER
-          if [[ "${{ secrets.SSH_USER }}" != "root" ]]; then
+          if [ "${{ secrets.SSH_USER }}" != "root" ]; then
             echo "Error: SSH_USER должен быть 'root'"
             exit 1
           fi
           
           # Проверяем SSH_PRIVATE_KEY
-          if [[ ! ${{ secrets.SSH_PRIVATE_KEY }} =~ "BEGIN OPENSSH PRIVATE KEY" ]]; then
+          if ! [[ "${{ secrets.SSH_PRIVATE_KEY }}" == *"BEGIN OPENSSH PRIVATE KEY"* ]]; then
             echo "Error: Неверный формат SSH_PRIVATE_KEY"
             exit 1
           fi
           
           # Проверяем YOUTUBE_CLIENT_SECRETS
-          if [[ ! ${{ secrets.YOUTUBE_CLIENT_SECRETS }} =~ "client_id" ]] || 
-             [[ ! ${{ secrets.YOUTUBE_CLIENT_SECRETS }} =~ "client_secret" ]]; then
+          if ! [[ "${{ secrets.YOUTUBE_CLIENT_SECRETS }}" == *"client_id"* ]] || 
+             ! [[ "${{ secrets.YOUTUBE_CLIENT_SECRETS }}" == *"client_secret"* ]]; then
             echo "Error: YOUTUBE_CLIENT_SECRETS должен содержать client_id и client_secret"
             exit 1
           fi
           
           # Проверяем YOUTUBE_API_KEY
-          if [[ ${#secrets.YOUTUBE_API_KEY} -lt 30 ]]; then
+          if [ "${#secrets.YOUTUBE_API_KEY}" -lt 30 ]; then
             echo "Error: YOUTUBE_API_KEY слишком короткий"
             exit 1
           fi
