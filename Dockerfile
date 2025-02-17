@@ -11,17 +11,20 @@ RUN apt-get update && apt-get install -y \
     wkhtmltopdf \
     gcc \
     python3-dev \
+    git \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем файлы проекта
 COPY requirements.txt .
-COPY src/ /app/src/
-COPY config/ /app/config/
 
 # Устанавливаем Python-зависимости
 RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir gunicorn psutil
+    && pip install --no-cache-dir gunicorn
+
+# Копируем остальные файлы
+COPY src/ /app/src/
+COPY config/ /app/config/
 
 # Создаём директории
 RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models /app/logs && \
