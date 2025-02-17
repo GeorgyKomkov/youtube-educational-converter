@@ -285,6 +285,17 @@ monitor_thread = threading.Thread(target=monitor_resources, daemon=True)
 monitor_thread.start()
 
 if __name__ == "__main__":
-    ensure_directories()  # Добавляем проверку директорий
+    ensure_directories()
     port = int(os.environ.get("PORT", 8080))
+    
+    # Конфигурация для экономии памяти
+    options = {
+        'worker_class': 'gthread',
+        'workers': 1,
+        'threads': 2,
+        'timeout': 120,
+        'max_requests': 1000,
+        'max_requests_jitter': 50
+    }
+    
     app.run(host="0.0.0.0", port=port)

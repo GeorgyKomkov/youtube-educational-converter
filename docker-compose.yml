@@ -1,94 +1,62 @@
-version: '3.7'
+version: '3.8'
 
 services:
   redis:
     image: redis:alpine
     ports:
       - "6379:6379"
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    networks:
-      - app_network
     deploy:
       resources:
         limits:
-          cpus: '0.2'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
           memory: 128M
 
   server:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    command: python -m gunicorn src.server:app --bind 0.0.0.0:8080 --workers 1 --threads 2
     ports:
       - "8080:8080"
     volumes:
-      - /root/youtube-converter/videos:/app/videos
-      - /root/youtube-converter/output:/app/output
-      - /root/youtube-converter/temp:/app/temp
-      - /root/youtube-converter/logs:/app/logs
-      - /root/youtube-converter/client_secrets.json:/app/client_secrets.json:ro
-      - /root/youtube-converter/api.txt:/app/api.txt:ro
+      - ./videos:/app/videos
+      - ./output:/app/output
+      - ./temp:/app/temp
+      - ./cache:/app/cache
+      - ./logs:/app/logs
     environment:
-      - PYTHONPATH=/app
-      - FLASK_APP=src.server
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
-    command: python -m gunicorn --workers=2 --threads=4 --bind 0.0.0.0:8080 "src.server:app"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     depends_on:
       - redis
-    networks:
-      - app_network
-    restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '0.3'
-          memory: 384M
-        reservations:
-          cpus: '0.2'
           memory: 256M
-    working_dir: /app
+        reservations:
+          memory: 128M
 
   worker:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A src.server:celery worker --loglevel=info
     volumes:
-      - /root/youtube-converter/videos:/app/videos
-      - /root/youtube-converter/output:/app/output
-      - /root/youtube-converter/temp:/app/temp
-      - /root/youtube-converter/logs:/app/logs
-      - /root/youtube-converter/client_secrets.json:/app/client_secrets.json:ro
-      - /root/youtube-converter/api.txt:/app/api.txt:ro
+      - ./videos:/app/videos
+      - ./output:/app/output
+      - ./temp:/app/temp
+      - ./cache:/app/cache
+      - ./logs:/app/logs
     environment:
-      - PYTHONPATH=/app
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
-    command: celery -A "src.server.celery" worker --loglevel=info
     depends_on:
       - redis
-    networks:
-      - app_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "celery", "inspect", "ping", "-A", "src.server.celery", "-b", "redis://redis:6379/0"]
     deploy:
       resources:
         limits:
-          cpus: '0.3'
-          memory: 384M
-        reservations:
-          cpus: '0.2'
           memory: 256M
-      restart_policy:
-        condition: on-failure
-        max_attempts: 3
-    working_dir: /app
+        reservations:
+          memory: 128M
 
 volumes:
   redis_data:
