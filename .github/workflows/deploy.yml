@@ -47,7 +47,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "."
-          target: "/home/ubuntu/youtube-converter"
+          target: "/root/youtube-converter"
       
       - name: Deploy application
         uses: appleboy/ssh-action@v1.0.0
@@ -56,7 +56,17 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /home/ubuntu/youtube-converter
+            cd /root/youtube-converter
+            
+            # Проверяем docker-compose
+            echo "Docker compose version:"
+            docker-compose --version
+            
+            echo "Checking directory contents:"
+            ls -la
+            
+            echo "Checking docker-compose.yml:"
+            cat docker-compose.yml
             
             # Создаем credentials
             echo "Creating credentials files..."
@@ -73,10 +83,18 @@ jobs:
             docker system prune -af --volumes
             
             echo "Building containers..."
-            docker-compose build --no-cache --progress=plain
+            docker-compose build --no-cache --progress=plain || {
+              echo "Build failed! Showing logs:"
+              docker-compose logs
+              exit 1
+            }
             
             echo "Starting containers..."
-            docker-compose up -d
+            docker-compose up -d || {
+              echo "Start failed! Showing logs:"
+              docker-compose logs
+              exit 1
+            }
             
             echo "Waiting for containers..."
             sleep 30
@@ -102,7 +120,7 @@ jobs:
             
             echo "Attempt $i failed. Checking logs..."
             ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} '
-              cd /home/ubuntu/youtube-converter && 
+              cd /root/youtube-converter && 
               echo "Container status:" &&
               docker-compose ps &&
               echo "\nServer logs:" &&
