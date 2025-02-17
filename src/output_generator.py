@@ -21,6 +21,11 @@ class OutputGenerator:
     def generate(self, data):
         """Создаёт Markdown и PDF-файл на основе транскрибации и ключевых кадров"""
         try:
+            # Проверка свободного места
+            free_space = shutil.disk_usage(self.output_dir).free / (1024 * 1024)  # MB
+            if free_space < 100:  # Минимум 100MB
+                raise RuntimeError(f"Недостаточно места на диске: {free_space}MB")
+            
             content = self._prepare_content(data)
             md_path = self._generate_markdown(content)
             pdf_path = self._generate_pdf(md_path)

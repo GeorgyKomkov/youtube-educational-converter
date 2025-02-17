@@ -9,6 +9,20 @@ class AudioExtractor:
     def __init__(self, temp_dir):
         self.temp_dir = temp_dir
         os.makedirs(temp_dir, exist_ok=True)
+        self._check_ffmpeg()
+        
+    def _check_ffmpeg(self):
+        """Проверка наличия и версии ffmpeg"""
+        try:
+            result = subprocess.run(['ffmpeg', '-version'], 
+                                 capture_output=True, 
+                                 text=True)
+            if result.returncode != 0:
+                raise RuntimeError("FFmpeg не установлен")
+            logger.info(f"FFmpeg version: {result.stdout.split('version')[1].split()[0]}")
+        except Exception as e:
+            logger.error(f"Ошибка при проверке FFmpeg: {e}")
+            raise RuntimeError("FFmpeg не доступен")
         
     def extract(self, video_path):
         """

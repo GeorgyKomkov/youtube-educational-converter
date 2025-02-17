@@ -54,9 +54,25 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev')
 
 # Конфигурация Celery
-celery = Celery('youtube_converter',
-                broker=os.environ.get('CELERY_BROKER_URL', 'redis://redis:6379/0'),
-                backend=os.environ.get('REDIS_URL', 'redis://redis:6379/0'))
+celery = Celery('youtube_converter')
+celery.conf.update(
+    broker_url=os.environ.get('CELERY_BROKER_URL', 'redis://redis:6379/0'),
+    result_backend=os.environ.get('REDIS_URL', 'redis://redis:6379/0'),
+    task_serializer='json',
+    accept_content=['json'],
+    result_serializer='json',
+    timezone='UTC',
+    enable_utc=True,
+)
+
+# Добавляем конфигурацию для retry
+celery.conf.update(
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    task_routes={
+        'src.server.process_video_task': {'queue': 'video_processing'}
+    }
+)
 
 # Подключение к Redis
 redis_client = redis.from_url(os.environ.get('REDIS_URL', 'redis://redis:6379/0'))

@@ -1,5 +1,20 @@
 #!/bin/bash
-set -ex
+set -e
+
+# Проверка обязательных переменных окружения
+required_vars=(
+    "REDIS_URL"
+    "CELERY_BROKER_URL"
+    "FLASK_APP"
+    "PYTHONPATH"
+)
+
+for var in "${required_vars[@]}"; do
+    if [ -z "${!var}" ]; then
+        echo "ERROR: $var is not set"
+        exit 1
+    fi
+done
 
 export PYTHONPATH="/app:$PYTHONPATH"
 export PORT=8080

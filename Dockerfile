@@ -16,24 +16,20 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем файлы проекта
-COPY requirements.txt .
+COPY . /app/
 
 # Устанавливаем Python-зависимости
 RUN pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir gunicorn
-
-# Копируем остальные файлы
-COPY src/ /app/src/
-COPY config/ /app/config/
 
 # Создаём директории
 RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models /app/logs && \
     chmod -R 777 /app/videos /app/output /app/temp /app/cache /app/logs
 
 # Устанавливаем переменные окружения
-ENV PYTHONUNBUFFERED=1
-ENV FLASK_APP=src.server
 ENV PYTHONPATH=/app
+ENV FLASK_APP=src.server
+ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8080
 

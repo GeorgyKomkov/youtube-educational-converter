@@ -78,11 +78,21 @@ def cleanup_temp(temp_dir):
 
 def process_video(video_path):
     try:
-        temp_dir = "/app/temp"
-        # Инициализация с temp_dir
+        # Загружаем конфигурацию
+        config = load_config()
+        
+        temp_dir = config['temp_dir']
+        output_dir = config['output_dir']
+        
+        # Инициализация с правильными параметрами
         audio_extractor = AudioExtractor(temp_dir)
-        frame_processor = FrameProcessor()
-        output_generator = OutputGenerator()
+        frame_processor = FrameProcessor(
+            output_dir,
+            max_frames=config['video_processing']['max_frames'],
+            mode=config['video_processing']['frame_mode'],
+            blip_enabled=config['blip']['enabled']
+        )
+        output_generator = OutputGenerator(output_dir)
 
         # Извлечение аудио
         audio_path = audio_extractor.extract(video_path)
@@ -90,8 +100,11 @@ def process_video(video_path):
         # Обработка кадров
         frames = frame_processor.process(video_path)
         
-        # Генерация выходного файла
-        output_path = output_generator.generate(audio_path, frames)
+        # Транскрибация аудио
+        transcription = transcribe_audio(audio_path, config)
+        
+        # Генерация PDF
+        output_path = generate_pdf(transcription, frames, video_path, config)
         
         return output_path
         

@@ -24,8 +24,6 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./src:/app/src
-      - ./config:/app/config
       - ./videos:/app/videos
       - ./output:/app/output
       - ./temp:/app/temp
@@ -37,7 +35,7 @@ services:
       - FLASK_APP=src.server
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
-    command: gunicorn --workers=2 --threads=4 --bind 0.0.0.0:8080 src.server:app
+    command: python -m gunicorn --workers=2 --threads=4 --bind 0.0.0.0:8080 "src.server:app"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health || exit 1"]
       interval: 30s
@@ -60,8 +58,6 @@ services:
   worker:
     build: .
     volumes:
-      - ./src:/app/src
-      - ./config:/app/config
       - ./videos:/app/videos
       - ./output:/app/output
       - ./temp:/app/temp
@@ -72,12 +68,14 @@ services:
       - PYTHONPATH=/app
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
-    command: celery -A src.server.celery worker --loglevel=info
+    command: celery -A "src.server.celery" worker --loglevel=info
     depends_on:
       - redis
     networks:
       - app_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "celery", "inspect", "ping", "-A", "src.server.celery", "-b", "redis://redis:6379/0"]
     deploy:
       resources:
         limits:
@@ -86,6 +84,9 @@ services:
         reservations:
           cpus: '0.2'
           memory: 256M
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
 
 volumes:
   redis_data:

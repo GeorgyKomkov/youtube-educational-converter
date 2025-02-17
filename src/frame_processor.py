@@ -25,14 +25,24 @@ class FrameProcessor:
         # Инициализация моделей
         self.caption_model = None
         if self.blip_enabled:
-            if torch.cuda.is_available() and not os.environ.get('DISABLE_CUDA'):
-                device = "cuda"
-            else:
-                device = "cpu"
+            # Проверка доступности CUDA
+            try:
+                if torch.cuda.is_available() and not os.environ.get('DISABLE_CUDA'):
+                    self.device = "cuda"
+                    # Проверка памяти GPU
+                    gpu_memory = torch.cuda.get_device_properties(0).total_memory
+                    if gpu_memory < 4 * 1024 * 1024 * 1024:  # Меньше 4GB
+                        self.logger.warning("Недостаточно GPU памяти, переключаемся на CPU")
+                        self.device = "cpu"
+                else:
+                    self.device = "cpu"
+            except Exception as e:
+                self.logger.warning(f"Ошибка при инициализации CUDA: {e}")
+                self.device = "cpu"
             self.caption_model = pipeline(
                 "image-to-text", 
                 model="Salesforce/blip-image-captioning-base",
-                device=device
+                device=self.device
             )
         
         # Добавить загрузку конфигурации
