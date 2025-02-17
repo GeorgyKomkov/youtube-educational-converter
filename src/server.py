@@ -121,14 +121,66 @@ HTML_PAGE = """
 # Инициализация YouTube API
 youtube_api = YouTubeAPI()
 
-@celery.task
-def process_video_task(video_path):
+@celery.task(bind=True, max_retries=3)
+def process_video_task(self, video_url):
     """Celery задача для обработки видео"""
+    video_path = None
     try:
-        return process_video(video_path)
+        video_id = video_url.split("v=")[-1]
+        download_url, title = youtube_api.get_download_url(video_id)
+
+        if not download_url:
+            raise Exception("Не удалось получить ссылку на видео")
+
+        # Скачиваем видео
+        video_path = os.path.join(VIDEO_DIR, f"{video_id}.mp4")
+        ydl_opts = {
+            'format': 'worst[ext=mp4]',
+            'outtmpl': video_path,
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+            'prefer_ffmpeg': True,
+            'keepvideo': False,
+            'max_filesize': 100 * 1024 * 1024,
+            'postprocessor_args': [
+                '-vf', 'scale=640:360',
+                '-b:v', '500k',
+                '-maxrate', '500k',
+                '-bufsize', '1000k',
+                '-b:a', '128k',
+            ],
+        }
+        
+        logger.info(f"Начинаем скачивание видео {video_id}")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([video_url])
+        
+        # Обрабатываем видео
+        pdf_path = process_video(video_path)
+        
+        # После успешной обработки удаляем видео
+        if os.path.exists(video_path):
+            os.remove(video_path)
+            logger.info(f"Видео {video_id} успешно удалено после обработки")
+            
+        return pdf_path
+        
     except Exception as e:
         logger.error(f"Ошибка при обработке видео: {e}")
-        raise
+        self.retry(exc=e, countdown=60)
+    finally:
+        # Удаляем видео в случае ошибки
+        if video_path and os.path.exists(video_path):
+            try:
+                os.remove(video_path)
+                logger.info(f"Видео удалено после ошибки обработки")
+            except Exception as e:
+                logger.error(f"Ошибка при удалении видео: {e}")
+        
+        # Очищаем временные файлы
+        cleanup_temp(config['temp_dir'])
 
 @app.route("/", methods=["GET"])
 def index():
@@ -166,29 +218,12 @@ def download_video():
     try:
         logger.info(f"Начинаем обработку видео: {video_url}")
         video_id = video_url.split("v=")[-1]
-        download_url, title = youtube_api.get_download_url(video_id)
-
-        if not download_url:
-            session['error_message'] = "Не удалось получить ссылку на видео"
-            return redirect(url_for('index'))
-
-        # Скачиваем видео
-        video_path = os.path.join(VIDEO_DIR, f"{video_id}.mp4")
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': video_path,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([video_url])
-
-        # Запускаем асинхронную обработку
-        task = process_video_task.delay(video_path)
         
-        session['success_message'] = f"Видео '{title}' начало обрабатываться. ID задачи: {task.id}"
-        return jsonify({
-            "task_id": task.id,
-            "message": "Видео поставлено в очередь на обработку"
-        }), 202
+        # Запускаем асинхронную задачу
+        task = process_video_task.delay(video_url)
+        
+        session['success_message'] = f"Видео поставлено в очередь на обработку. ID задачи: {task.id}"
+        return redirect(url_for('index'))
 
     except Exception as e:
         logger.error(f"Ошибка при обработке видео: {e}")

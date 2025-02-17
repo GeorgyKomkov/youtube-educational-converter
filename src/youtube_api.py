@@ -2,6 +2,7 @@ import os
 import json
 import logging
 from googleapiclient.discovery import build
+import redis
 
 class YouTubeAPI:
     def __init__(self):
@@ -10,6 +11,7 @@ class YouTubeAPI:
         self.api_key = self._load_api_key()
         self.client_secrets = self._load_client_secrets()
         self.initialize_api()
+        self.redis_client = redis.Redis(host='localhost', port=6379, db=0)
 
     def _load_api_key(self):
         """Загрузка API ключа из файла"""
@@ -41,8 +43,14 @@ class YouTubeAPI:
     def get_video_info(self, video_id):
         """Получает информацию о видео"""
         try:
+            # Проверяем кэш
+            cache_key = f"video_info:{video_id}"
+            cached_info = self.redis_client.get(cache_key)
+            if cached_info:
+                return json.loads(cached_info), None
+
             request = self.youtube.videos().list(
-                part="snippet,contentDetails",
+                part="snippet,contentDetails,fileDetails",  # Добавляем fileDetails
                 id=video_id
             )
             response = request.execute()
@@ -51,11 +59,22 @@ class YouTubeAPI:
                 return None, "Видео не найдено"
                 
             video_info = response['items'][0]
-            return {
+            
+            # Проверяем размер файла
+            if 'fileDetails' in video_info:
+                size_mb = int(video_info['fileDetails']['fileSizeBytes']) / (1024 * 1024)
+                if size_mb > 100:  # Ограничение 100MB
+                    return None, "Видео слишком большое"
+
+            info = {
                 'title': video_info['snippet']['title'],
                 'duration': video_info['contentDetails']['duration'],
                 'description': video_info['snippet']['description']
-            }, None
+            }
+            
+            # Кэшируем результат на 1 час
+            self.redis_client.setex(cache_key, 3600, json.dumps(info))
+            return info, None
             
         except Exception as e:
             self.logger.error(f"Error getting video info: {e}")

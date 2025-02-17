@@ -103,28 +103,45 @@ class FrameProcessor:
 
     def _capture_frames(self, cap, frame_indices, fps):
         frames = []
+        memory_limit = 500 * 1024 * 1024  # 500MB
+        total_memory = 0
+        
         for idx in frame_indices:
+            # Проверяем использование памяти
+            if total_memory > memory_limit:
+                self.logger.warning("Достигнут лимит памяти, прекращаем обработку кадров")
+                break
+            
             cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             ret, frame = cap.read()
             if not ret:
                 continue
-                
+            
+            # Уменьшаем размер кадра
+            frame = cv2.resize(frame, (640, 360))
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # Оцениваем размер кадра в памяти
+            frame_size = frame_rgb.nbytes
+            total_memory += frame_size
+            
             pil_image = Image.fromarray(frame_rgb)
-            
-            # Генерация описания и семантического эмбеддинга
-            description = self._generate_caption(pil_image)
-            embedding = self._get_image_embedding(pil_image)
-            
             timestamp = idx / fps
-            img_path = self._save_frame(pil_image, timestamp)
+            
+            # Сохраняем с оптимизацией качества
+            img_path = self._save_frame(pil_image, timestamp, quality=65)
             
             frames.append({
                 'timestamp': timestamp,
                 'path': img_path,
-                'description': description,
-                'embedding': embedding
+                'description': self._generate_caption(pil_image)
             })
+            
+            # Очищаем память
+            del frame
+            del frame_rgb
+            del pil_image
+        
         return frames
 
     def _generate_caption(self, image):

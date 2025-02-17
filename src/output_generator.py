@@ -71,7 +71,7 @@ class OutputGenerator:
         return output_path
 
     def _generate_pdf(self, md_path):
-        """Конвертирует Markdown в PDF"""
+        """Конвертирует Markdown в PDF с оптимизацией"""
         try:
             options = {
                 'page-size': 'A4',
@@ -79,16 +79,25 @@ class OutputGenerator:
                 'margin-right': '20mm',
                 'margin-bottom': '20mm',
                 'margin-left': '20mm',
-                'encoding': 'UTF-8'
+                'encoding': 'UTF-8',
+                'image-quality': 65,  # Уменьшаем качество изображений
+                'image-dpi': 150,     # Уменьшаем DPI
+                'compress': True,     # Включаем сжатие
+                'low-quality': True   # Оптимизируем для размера
             }
             
             html = markdown2.markdown_path(md_path)
             pdf_path = md_path.replace('.md', '.pdf')
+            
+            # Ограничиваем размер выходного файла
+            max_size = 50 * 1024 * 1024  # 50MB
+            
             pdfkit.from_string(html, pdf_path, options=options)
             
-            # Проверка размера файла
-            if os.path.getsize(pdf_path) > self.config['pdf']['max_size'] * 1024 * 1024:
-                raise ValueError("PDF файл слишком большой")
+            # Проверяем размер
+            if os.path.getsize(pdf_path) > max_size:
+                self.logger.warning("PDF слишком большой, применяем дополнительное сжатие")
+                self._compress_pdf(pdf_path)
                 
             return pdf_path
         finally:

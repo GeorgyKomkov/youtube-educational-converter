@@ -78,6 +78,14 @@ def cleanup_temp(temp_dir):
 
 def process_video(video_path):
     try:
+        # Проверяем размер видео
+        video_size = os.path.getsize(video_path) / (1024 * 1024)  # MB
+        if video_size > 100:  # Ограничение 100MB
+            raise ValueError(f"Видео слишком большое: {video_size}MB")
+        
+        # Освобождаем память перед обработкой
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        
         # Загружаем конфигурацию
         config = load_config()
         
@@ -111,6 +119,10 @@ def process_video(video_path):
     except Exception as e:
         logger.error(f"Error processing video: {e}")
         raise
+    finally:
+        # Очищаем память после обработки
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        cleanup_temp(config['temp_dir'])
 
 def extract_audio(video_path, config):
     """Извлечение аудио из видео"""
