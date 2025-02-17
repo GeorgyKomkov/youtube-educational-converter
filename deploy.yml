@@ -47,23 +47,32 @@ jobs:
           YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }}
           EOF
           
+      - name: Cleanup before build
+        run: |
+          docker system prune -af
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get clean
+          df -h
+
       - name: Deploy to server
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
-          # Создаем бэкап
-          ssh $SSH_USER@$SSH_HOST "cd /app && \
-            tar -czf backup-$(date +%Y%m%d_%H%M%S).tar.gz videos output"
+          # Очистка на сервере
+          ssh $SSH_USER@$SSH_HOST "docker system prune -af --volumes"
           
-          # Копируем файлы
+          # Проверка места
+          ssh $SSH_USER@$SSH_HOST "df -h"
+          
+          # Деплой
           scp -r . $SSH_USER@$SSH_HOST:/app/
           scp .env $SSH_USER@$SSH_HOST:/app/
           
-          # Перезапускаем сервисы
+          # Перезапуск с очисткой
           ssh $SSH_USER@$SSH_HOST "cd /app && \
-            docker-compose down && \
-            docker-compose up -d"
+            docker-compose down --volumes && \
+            docker-compose up -d --build"
             
       - name: Verify deployment
         run: |

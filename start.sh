@@ -1,6 +1,16 @@
 #!/bin/bash
 set -e
 
+# Очистка временных файлов
+cleanup() {
+    echo "Cleaning up..."
+    rm -rf /tmp/* /var/tmp/*
+    docker system prune -af --volumes
+}
+
+# Регистрируем функцию очистки
+trap cleanup EXIT
+
 # Проверка версии Python
 python3 --version | grep -q "Python 3.[91]" || {
     echo "ERROR: Required Python 3.9 or higher"
