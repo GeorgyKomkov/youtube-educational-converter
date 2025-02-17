@@ -10,10 +10,21 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       
+      - name: Install Docker Compose
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+      
       - name: Create required directories
         run: |
           mkdir -p videos output temp cache/models logs
           chmod -R 777 videos output temp cache logs
+      
+      - name: Setup environment
+        run: |
+          echo "${{ secrets.YOUTUBE_API_KEY }}" > api.txt
+          echo "${{ secrets.CLIENT_SECRETS }}" > client_secrets.json
       
       - name: Build and start containers
         run: |
@@ -29,8 +40,3 @@ jobs:
         run: |
           sleep 10
           curl -f http://localhost:8080/health || (docker-compose logs && exit 1)
-
-      - name: Setup environment
-        run: |
-          echo "${{ secrets.YOUTUBE_API_KEY }}" > api.txt
-          echo "${{ secrets.CLIENT_SECRETS }}" > client_secrets.json
