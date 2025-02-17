@@ -8,6 +8,41 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Check secrets format
+        run: |
+          # Проверяем SSH_HOST
+          if [[ ! ${{ secrets.SSH_HOST }} =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: SSH_HOST должен быть IP адресом"
+            exit 1
+          fi
+          
+          # Проверяем SSH_USER
+          if [[ "${{ secrets.SSH_USER }}" != "root" ]]; then
+            echo "Error: SSH_USER должен быть 'root'"
+            exit 1
+          fi
+          
+          # Проверяем SSH_PRIVATE_KEY
+          if [[ ! ${{ secrets.SSH_PRIVATE_KEY }} =~ "BEGIN OPENSSH PRIVATE KEY" ]]; then
+            echo "Error: Неверный формат SSH_PRIVATE_KEY"
+            exit 1
+          fi
+          
+          # Проверяем YOUTUBE_CLIENT_SECRETS
+          if [[ ! ${{ secrets.YOUTUBE_CLIENT_SECRETS }} =~ "client_id" ]] || 
+             [[ ! ${{ secrets.YOUTUBE_CLIENT_SECRETS }} =~ "client_secret" ]]; then
+            echo "Error: YOUTUBE_CLIENT_SECRETS должен содержать client_id и client_secret"
+            exit 1
+          fi
+          
+          # Проверяем YOUTUBE_API_KEY
+          if [[ ${#secrets.YOUTUBE_API_KEY} -lt 30 ]]; then
+            echo "Error: YOUTUBE_API_KEY слишком короткий"
+            exit 1
+          fi
+          
+          echo "✅ Все секреты имеют правильный формат"
+
       - uses: actions/checkout@v2
       
       - name: Copy project files
@@ -28,15 +63,29 @@ jobs:
           script: |
             cd /root/youtube-converter
             
+            # Создаем credentials
             echo "Creating credentials files..."
             echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
             echo '${{ secrets.YOUTUBE_API_KEY }}' > api.txt
             chmod 644 client_secrets.json api.txt
             
+            # Проверяем сборку
+            echo "Building containers..."
+            docker-compose build --no-cache --progress=plain
+            
             echo "Starting containers..."
             docker-compose down
             docker system prune -f
             docker-compose up -d
+            
+            # Проверяем запуск контейнеров
+            echo "Checking containers..."
+            sleep 30
+            if ! docker-compose ps | grep "Up"; then
+              echo "Error: Containers failed to start"
+              docker-compose logs
+              exit 1
+            fi
             
             echo "Waiting for container to initialize..."
             sleep 45
@@ -55,15 +104,33 @@ jobs:
 
       - name: Verify deployment
         run: |
-          sleep 120
+          # Увеличиваем время ожидания
+          sleep 180  # Даем больше времени на запуск
+          
           for i in {1..5}; do
             echo "Attempt $i: Checking server status..."
-            if curl -v --fail --max-time 30 http://${{ secrets.SSH_HOST }}:8080/health; then
+            if curl -v --fail --max-time 60 http://${{ secrets.SSH_HOST }}:8080/health; then
               echo "Service is up and running!"
               exit 0
             fi
-            echo "Attempt $i failed, waiting..."
-            sleep 45
+            
+            # Проверяем логи при неудаче
+            echo "Attempt $i failed. Checking logs..."
+            ssh -i ~/.ssh/id_ed25519 root@${{ secrets.SSH_HOST }} '
+              cd /root/youtube-converter && 
+              docker-compose logs server &&
+              docker-compose ps
+            '
+            
+            echo "Waiting before next attempt..."
+            sleep 60  # Увеличиваем интервал между попытками
           done
+          
           echo "Service failed to start properly"
+          echo "Final container status and logs:"
+          ssh -i ~/.ssh/id_ed25519 root@${{ secrets.SSH_HOST }} '
+            cd /root/youtube-converter &&
+            docker-compose ps &&
+            docker-compose logs
+          '
           exit 1

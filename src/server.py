@@ -2,13 +2,13 @@ from flask import Flask, request, jsonify, render_template_string, send_file, re
 import os
 import secrets
 import threading
-from youtube_api import YouTubeAPI
+from src.youtube_api import YouTubeAPI
 from datetime import datetime
 import time
 import logging
 from celery import Celery
 import redis
-from process_video import process_video
+from src.process_video import process_video
 import yt_dlp
 import sys
 

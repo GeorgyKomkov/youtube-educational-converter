@@ -32,6 +32,7 @@ services:
       - WHISPER_BATCH_SIZE=1
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
+      - PYTHONPATH=/app
     volumes:
       - app_videos:/app/videos
       - app_output:/app/output
