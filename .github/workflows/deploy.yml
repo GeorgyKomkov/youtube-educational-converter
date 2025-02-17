@@ -14,7 +14,7 @@ jobs:
         uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          name: id_ed25519 # имя файла ключа
+          name: id_ed25519
           known_hosts: ${{ secrets.SSH_HOST }}
           
       - name: Add known hosts
@@ -41,9 +41,19 @@ jobs:
             mkdir -p videos output temp cache/models logs
             chmod -R 777 videos output temp cache logs
             
-            # Создаем файлы с секретами
-            echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
-            echo '${{ secrets.YOUTUBE_API_KEY }}' > api.txt
+            # Создаем файлы с секретами (с правильным форматированием JSON)
+            echo '{
+              \"web\": {
+                \"client_id\": \"${{ secrets.YOUTUBE_CLIENT_ID }}\",
+                \"project_id\": \"youtube-educational-converter\",
+                \"auth_uri\": \"https://accounts.google.com/o/oauth2/auth\",
+                \"token_uri\": \"https://oauth2.googleapis.com/token\",
+                \"auth_provider_x509_cert_url\": \"https://www.googleapis.com/oauth2/v1/certs\",
+                \"client_secret\": \"${{ secrets.YOUTUBE_CLIENT_SECRET }}\",
+                \"redirect_uris\": [\"http://localhost:8080/oauth2callback\"]
+              }
+            }' > client_secrets.json
+            echo \"${{ secrets.YOUTUBE_API_KEY }}\" > api.txt
             
             # Останавливаем и удаляем старые контейнеры
             docker-compose down
