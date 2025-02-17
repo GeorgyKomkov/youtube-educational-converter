@@ -8,12 +8,6 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
-    mem_limit: 256m
-    deploy:
-      resources:
-        limits:
-          cpus: '0.2'
-          memory: 256M
     networks:
       - app_network
 
@@ -23,84 +17,55 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
-      - PYTHONUNBUFFERED=1  # Для немедленного вывода логов
-      - FLASK_ENV=development  # Добавляем для более подробных логов
+      - PYTHONUNBUFFERED=1
+      - FLASK_APP=src.server
+      - FLASK_ENV=development
       - FLASK_DEBUG=1
-      - PYTHONDONTWRITEBYTECODE=1  # Отключаем кэширование .pyc файлов
-      - PYTORCH_NO_CUDA=1
-      - OMP_NUM_THREADS=1
-      - WHISPER_BATCH_SIZE=1
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - PYTHONPATH=/app
     volumes:
-      - app_videos:/app/videos
-      - app_output:/app/output
-      - app_temp:/app/temp
-      - app_cache:/app/cache/models
-      - ${PWD}/client_secrets.json:/app/client_secrets.json:ro
-      - ${PWD}/api.txt:/app/api.txt:ro
-    restart: unless-stopped
-    mem_reservation: 512m
+      - ./videos:/app/videos
+      - ./output:/app/output
+      - ./temp:/app/temp
+      - ./cache:/app/cache/models
+      - ./logs:/app/logs
+      - ./client_secrets.json:/app/client_secrets.json:ro
+      - ./api.txt:/app/api.txt:ro
     working_dir: /app
+    command: python -m flask run --host=0.0.0.0 --port=8080
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
       retries: 3
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "3"
-    ulimits:
-      nofile:
-        soft: 32768
-        hard: 65536
     depends_on:
       - redis
     networks:
       - app_network
-    mem_limit: 768m
-    deploy:
-      resources:
-        limits:
-          cpus: '0.4'
-          memory: 768M
 
   worker:
     build: .
-    command: celery -A src.server.celery worker --loglevel=info --pool=solo
+    command: celery -A src.server.celery worker --loglevel=info
     volumes:
-      - app_videos:/app/videos
-      - app_output:/app/output
-      - app_temp:/app/temp
-      - app_cache:/app/cache/models
-      - ${PWD}/client_secrets.json:/app/client_secrets.json:ro
-      - ${PWD}/api.txt:/app/api.txt:ro
-    depends_on:
-      - redis
+      - ./videos:/app/videos
+      - ./output:/app/output
+      - ./temp:/app/temp
+      - ./cache:/app/cache/models
+      - ./logs:/app/logs
+      - ./client_secrets.json:/app/client_secrets.json:ro
+      - ./api.txt:/app/api.txt:ro
     environment:
       - PYTHONUNBUFFERED=1
-      - C_FORCE_ROOT=true
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - PYTHONPATH=/app
-    mem_limit: 768m
-    deploy:
-      resources:
-        limits:
-          cpus: '0.4'
-          memory: 768M
+    depends_on:
+      - redis
     networks:
       - app_network
 
 volumes:
-  app_videos:
-  app_output:
-  app_temp:
-  app_cache:
   redis_data:
 
 networks:

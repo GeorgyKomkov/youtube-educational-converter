@@ -74,13 +74,34 @@ jobs:
             echo '${{ secrets.YOUTUBE_API_KEY }}' > api.txt
             chmod 644 client_secrets.json api.txt
             
-            echo "Stopping running containers..."
-            docker stop $(docker ps -q) || true
+            echo "Cleaning up Docker aggressively..."
+            # Остановить все контейнеры
+            docker stop $(docker ps -aq) || true
+            
+            # Удалить все контейнеры
             docker rm $(docker ps -aq) || true
-            docker network prune -f || true
-
-            echo "Cleaning up Docker system..."
+            
+            # Удалить все образы
+            docker rmi $(docker images -q) || true
+            
+            # Удалить все volumes
+            docker volume rm $(docker volume ls -q) || true
+            
+            # Очистить систему
             docker system prune -af --volumes
+            
+            # Очистить кэш builder
+            docker builder prune -af
+            
+            echo "Checking disk space after cleanup:"
+            df -h
+            
+            echo "Cleaning up temp files..."
+            rm -rf /tmp/* /var/tmp/* || true
+            rm -rf videos/* output/* temp/* || true
+            
+            echo "Checking disk space after temp cleanup:"
+            df -h
             
             echo "Building containers..."
             docker-compose build --no-cache --progress=plain || {

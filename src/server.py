@@ -27,14 +27,26 @@ import redis
 import yt_dlp
 import sys
 
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 VIDEO_DIR = "/app/videos"
 OUTPUT_DIR = "/app/output"
 
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(16)  # Для управления сессиями
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev')
 
+# Конфигурация Celery
+celery = Celery('youtube_converter',
+                broker=os.environ.get('CELERY_BROKER_URL', 'redis://redis:6379/0'),
+                backend=os.environ.get('REDIS_URL', 'redis://redis:6379/0'))
+
+# Подключение к Redis
+redis_client = redis.from_url(os.environ.get('REDIS_URL', 'redis://redis:6379/0'))
 
 # 🔹 HTML-страница
 HTML_PAGE = """
@@ -78,22 +90,6 @@ HTML_PAGE = """
 """
 
 youtube_api = YouTubeAPI()
-
-# Создаем приложение Celery с обработкой ошибок
-try:
-    celery = Celery('youtube_converter')
-    celery.conf.update({
-        'broker_url': 'redis://redis:6379/0',
-        'result_backend': 'redis://redis:6379/0',
-        'task_serializer': 'json',
-        'result_serializer': 'json',
-        'accept_content': ['json']
-    })
-except Exception as e:
-    logger.error(f"Failed to initialize Celery: {e}")
-    raise
-
-redis_client = redis.Redis(host='redis', port=6379, db=0)
 
 @celery.task
 def process_video_task(video_path):
@@ -167,10 +163,21 @@ def download_video():
 @app.route("/health")
 def health_check():
     """Эндпоинт для проверки работоспособности сервера"""
-    return jsonify({
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat()
-    }), 200
+    try:
+        # Проверка подключения к Redis
+        redis_client.ping()
+        return jsonify({
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "redis": "connected"
+        }), 200
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return jsonify({
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
 
 def cleanup_old_files():
     logger.info("Запущена очистка старых файлов")
@@ -189,15 +196,6 @@ def cleanup_old_files():
 # Запускаем очистку в отдельном потоке
 cleanup_thread = threading.Thread(target=cleanup_old_files, daemon=True)
 cleanup_thread.start()
-
-def check_redis():
-    try:
-        redis_client.ping()
-        logger.info("Successfully connected to Redis")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to connect to Redis: {e}")
-        return False
 
 def ensure_directories():
     """Проверяет и создает необходимые директории"""
@@ -219,21 +217,4 @@ def ensure_directories():
 if __name__ == "__main__":
     ensure_directories()  # Добавляем проверку директорий
     port = int(os.environ.get("PORT", 8080))
-    host = os.environ.get("HOST", "0.0.0.0")
-    
-    logger.info(f"Starting server on {host}:{port}")
-    retries = 5
-    while retries > 0 and not check_redis():
-        logger.info(f"Waiting for Redis... {retries} attempts left")
-        time.sleep(5)
-        retries -= 1
-    
-    if retries == 0:
-        logger.error("Could not connect to Redis. Exiting.")
-        sys.exit(1)
-        
-    try:
-        app.run(host=host, port=port)
-    except Exception as e:
-        logger.error(f"Failed to start server: {e}")
-        sys.exit(1)
+    app.run(host="0.0.0.0", port=port)

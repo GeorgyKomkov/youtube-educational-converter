@@ -8,6 +8,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     curl \
     ffmpeg \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем файл зависимостей
@@ -16,26 +17,23 @@ COPY requirements.txt .
 # Устанавливаем Python-зависимости
 RUN pip install --no-cache-dir -r requirements.txt
 
-# После установки зависимостей
-RUN python -c "import torch; import whisper; import flask" || \
-    (echo "Failed to import required modules" && exit 1)
+# Создаём директории
+RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models /app/logs && \
+    chmod -R 777 /app/videos /app/output /app/temp /app/cache /app/logs
 
 # Копируем весь проект
 COPY . .
 
-# Создаём директории
-RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models /app/logs && \
-    chmod 777 /app/videos /app/output /app/temp /app/cache/models /app/logs
-
 # Проверяем наличие файлов конфигурации
-RUN test -f /app/client_secrets.json || echo "Warning: client_secrets.json not found"
-RUN test -f /app/api.txt || echo "Warning: api.txt not found"
+RUN ls -la /app && \
+    test -d /app/src || (echo "Source directory not found" && exit 1)
 
 # Устанавливаем переменные окружения
 ENV PYTHONUNBUFFERED=1
-ENV FLASK_APP=src/server.py
-ENV C_FORCE_ROOT=true
-ENV CELERY_APP=src.server.celery
+ENV FLASK_APP=src.server
+ENV PYTHONPATH=/app
+
+EXPOSE 8080
 
 # Проверяем работоспособность
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
