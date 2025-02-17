@@ -54,6 +54,8 @@ services:
           memory: 768M
         reservations:
           memory: 384M
+    ports:
+      - "8080:8080"
 
   worker:
     build: 
