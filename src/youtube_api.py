@@ -1,8 +1,11 @@
 import os
+import json
+import logging
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 import pickle
 import time
 
@@ -10,19 +13,39 @@ MAX_TOKEN_REFRESH_ATTEMPTS = 3
 
 class YouTubeAPI:
     def __init__(self):
-        self.config = self._load_config()
-        self.api_key = self._load_api_key()
+        self.logger = logging.getLogger(__name__)
         self.credentials = None
         self.youtube = None
+        self.api_key = self._load_api_key()
+        self.client_secrets = self._load_client_secrets()
+        self.initialize_api()
         
     def _load_api_key(self):
         """Загрузка API ключа из файла"""
         try:
-            api_key_path = os.getenv('YOUTUBE_API_KEY_PATH', 'api.txt')
-            with open(api_key_path, 'r') as f:
+            with open('api.txt', 'r') as f:
                 return f.read().strip()
-        except FileNotFoundError:
-            raise Exception(f"API key file ({api_key_path}) not found")
+        except Exception as e:
+            self.logger.error(f"Error loading API key: {e}")
+            raise
+
+    def _load_client_secrets(self):
+        """Загрузка client secrets из файла"""
+        try:
+            with open('client_secrets.json', 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            self.logger.error(f"Error loading client secrets: {e}")
+            raise
+
+    def initialize_api(self):
+        """Инициализация YouTube API"""
+        try:
+            self.youtube = build('youtube', 'v3', developerKey=self.api_key)
+            self.logger.info("YouTube API initialized successfully")
+        except Exception as e:
+            self.logger.error(f"Error initializing YouTube API: {e}")
+            raise
 
     def authenticate(self):
         """OAuth2 аутентификация"""
