@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     ffmpeg \
     wkhtmltopdf \
+    gcc \
+    python3-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -18,10 +20,8 @@ COPY src/ /app/src/
 COPY config/ /app/config/
 
 # Устанавливаем Python-зависимости
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Устанавливаем gunicorn
-RUN pip install gunicorn
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir gunicorn psutil
 
 # Создаём директории
 RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models /app/logs && \
