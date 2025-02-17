@@ -3,21 +3,28 @@ version: '3.8'
 services:
   redis:
     image: redis:alpine
-    ports:
-      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     deploy:
       resources:
         limits:
+          memory: 256M
+        reservations:
           memory: 128M
 
   server:
     build: 
       context: .
       dockerfile: Dockerfile
-    command: python -m gunicorn src.server:app --bind 0.0.0.0:8080 --workers 1 --threads 2
-    ports:
-      - "8080:8080"
+    command: python -m gunicorn src.server:app --bind 0.0.0.0:8080 --workers 1 --threads 2 --timeout 120
     volumes:
+      - ./config:/app/config:ro
       - ./videos:/app/videos
       - ./output:/app/output
       - ./temp:/app/temp
@@ -26,20 +33,28 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
+      - PYTHONUNBUFFERED=1
+      - FLASK_ENV=production
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 512M
         reservations:
-          memory: 128M
+          memory: 256M
 
   worker:
     build: 
       context: .
       dockerfile: Dockerfile
-    command: celery -A src.server:celery worker --loglevel=info
+    command: celery -A src.server:celery worker --loglevel=info --concurrency=2
     volumes:
       - ./videos:/app/videos
       - ./output:/app/output
@@ -49,17 +64,20 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
+      - PYTHONUNBUFFERED=1
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 1G
         reservations:
-          memory: 128M
+          memory: 512M
 
 volumes:
   redis_data:
+    driver: local
 
 networks:
   app_network:

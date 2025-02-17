@@ -1,8 +1,9 @@
 import os
 import json
 import logging
-from googleapiclient.discovery import build
 import redis
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 class YouTubeAPI:
     def __init__(self):
@@ -11,12 +12,16 @@ class YouTubeAPI:
         self.api_key = self._load_api_key()
         self.client_secrets = self._load_client_secrets()
         self.initialize_api()
-        self.redis_client = redis.Redis(host='localhost', port=6379, db=0)
+        
+        # Улучшенное подключение к Redis
+        redis_url = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
+        self.redis_client = redis.from_url(redis_url, decode_responses=True)
 
     def _load_api_key(self):
         """Загрузка API ключа из файла"""
         try:
-            with open('api.txt', 'r') as f:
+            api_key_path = os.path.join('config', 'api.txt')
+            with open(api_key_path, 'r') as f:
                 return f.read().strip()
         except Exception as e:
             self.logger.error(f"Error loading API key: {e}")
@@ -42,21 +47,21 @@ class YouTubeAPI:
 
     def get_video_info(self, video_id):
         """Получает информацию о видео"""
+        cache_key = f"video_info:{video_id}"
         try:
             # Проверяем кэш
-            cache_key = f"video_info:{video_id}"
             cached_info = self.redis_client.get(cache_key)
             if cached_info:
                 return json.loads(cached_info), None
 
             request = self.youtube.videos().list(
-                part="snippet,contentDetails,fileDetails",  # Добавляем fileDetails
+                part="snippet,contentDetails,fileDetails",
                 id=video_id
             )
             response = request.execute()
             
             if not response.get('items'):
-                return None, "Видео не найдено"
+                return None, "Video not found"
                 
             video_info = response['items'][0]
             
@@ -76,8 +81,12 @@ class YouTubeAPI:
             self.redis_client.setex(cache_key, 3600, json.dumps(info))
             return info, None
             
+        except HttpError as e:
+            error_msg = f"YouTube API error: {e.resp.status} - {e.content}"
+            self.logger.error(error_msg)
+            return None, error_msg
         except Exception as e:
-            self.logger.error(f"Error getting video info: {e}")
+            self.logger.error(f"Unexpected error: {e}")
             return None, str(e)
 
     def get_download_url(self, video_id):

@@ -53,7 +53,7 @@ config = load_config()
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev')
 
-# Конфигурация Celery
+# Улучшенная конфигурация Celery
 celery = Celery('youtube_converter')
 celery.conf.update(
     broker_url=os.environ.get('CELERY_BROKER_URL', 'redis://redis:6379/0'),
@@ -63,14 +63,27 @@ celery.conf.update(
     result_serializer='json',
     timezone='UTC',
     enable_utc=True,
-)
-
-# Добавляем конфигурацию для retry
-celery.conf.update(
+    
+    # Улучшенные настройки для надежности
     task_acks_late=True,
     task_reject_on_worker_lost=True,
+    worker_prefetch_multiplier=1,
+    task_time_limit=3600,  # 1 час максимум на задачу
+    task_soft_time_limit=3300,  # 55 минут софт-лимит
+    
+    # Настройки ретраев
     task_routes={
-        'src.server.process_video_task': {'queue': 'video_processing'}
+        'src.server.process_video_task': {
+            'queue': 'video_processing',
+            'routing_key': 'video.process'
+        }
+    },
+    broker_transport_options={
+        'visibility_timeout': 3600,
+        'max_retries': 3,
+        'interval_start': 0,
+        'interval_step': 0.2,
+        'interval_max': 0.5,
     }
 )
 
@@ -121,18 +134,19 @@ HTML_PAGE = """
 # Инициализация YouTube API
 youtube_api = YouTubeAPI()
 
-@celery.task(bind=True, max_retries=3)
+@celery.task(bind=True, 
+             max_retries=3, 
+             retry_backoff=True,
+             retry_backoff_max=600,
+             rate_limit='2/m')
 def process_video_task(self, video_url):
-    """Celery задача для обработки видео"""
-    video_path = None
     try:
         video_id = video_url.split("v=")[-1]
         download_url, title = youtube_api.get_download_url(video_id)
 
         if not download_url:
-            raise Exception("Не удалось получить ссылку на видео")
+            raise Exception("Failed to get download URL")
 
-        # Скачиваем видео
         video_path = os.path.join(VIDEO_DIR, f"{video_id}.mp4")
         ydl_opts = {
             'format': 'worst[ext=mp4]',
@@ -151,36 +165,36 @@ def process_video_task(self, video_url):
                 '-bufsize', '1000k',
                 '-b:a', '128k',
             ],
+            'no_check_certificate': True,
+            'ignoreerrors': True,
+            'no_warnings': True,
+            'quiet': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android'],
+                    'player_skip': ['webpage', 'config', 'js']
+                }
+            },
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate'
+            }
         }
-        
-        logger.info(f"Начинаем скачивание видео {video_id}")
+
+        logger.info(f"Starting download for video {video_id}")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_url])
-        
-        # Обрабатываем видео
-        pdf_path = process_video(video_path)
-        
-        # После успешной обработки удаляем видео
-        if os.path.exists(video_path):
-            os.remove(video_path)
-            logger.info(f"Видео {video_id} успешно удалено после обработки")
-            
-        return pdf_path
-        
-    except Exception as e:
-        logger.error(f"Ошибка при обработке видео: {e}")
-        self.retry(exc=e, countdown=60)
-    finally:
-        # Удаляем видео в случае ошибки
-        if video_path and os.path.exists(video_path):
-            try:
-                os.remove(video_path)
-                logger.info(f"Видео удалено после ошибки обработки")
-            except Exception as e:
-                logger.error(f"Ошибка при удалении видео: {e}")
-        
-        # Очищаем временные файлы
-        cleanup_temp(config['temp_dir'])
+
+        return {"status": "success", "video_path": video_path}
+
+    except Exception as exc:
+        logger.error(f"Error processing video: {exc}")
+        retry_count = self.request.retries
+        if retry_count < self.max_retries:
+            raise self.retry(exc=exc, countdown=2 ** retry_count)
+        raise
 
 @app.route("/", methods=["GET"])
 def index():
