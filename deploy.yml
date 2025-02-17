@@ -1,0 +1,77 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+          
+      - name: Run tests
+        run: |
+          pytest --cov=src tests/
+          
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          name: id_ed25519
+          known_hosts: ${{ secrets.SSH_HOST }}
+          
+      - name: Create .env file
+        run: |
+          cat > .env << EOF
+          YOUTUBE_CLIENT_ID=${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }}
+          EOF
+          
+      - name: Deploy to server
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          # Создаем бэкап
+          ssh $SSH_USER@$SSH_HOST "cd /app && \
+            tar -czf backup-$(date +%Y%m%d_%H%M%S).tar.gz videos output"
+          
+          # Копируем файлы
+          scp -r . $SSH_USER@$SSH_HOST:/app/
+          scp .env $SSH_USER@$SSH_HOST:/app/
+          
+          # Перезапускаем сервисы
+          ssh $SSH_USER@$SSH_HOST "cd /app && \
+            docker-compose down && \
+            docker-compose up -d"
+            
+      - name: Verify deployment
+        run: |
+          sleep 30
+          curl -f "http://${{ secrets.SSH_HOST }}:8080/health"
+          
+      - name: Cleanup
+        if: always()
+        run: |
+          ssh $SSH_USER@$SSH_HOST "docker system prune -af --volumes"
+          find /app/backup* -mtime +7 -delete

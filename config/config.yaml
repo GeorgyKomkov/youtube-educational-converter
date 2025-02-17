@@ -7,25 +7,27 @@ video_dir: '/app/videos'
 model_cache: "/app/cache/models"
 
 memory:
-  max_video_size: 50
-  chunk_size: 1
-  cleanup_interval: 30
-  emergency_cleanup_threshold: 85
+  max_video_size: 50  # MB
+  chunk_size: 1  # MB
+  cleanup_interval: 3600  # seconds
+  emergency_cleanup_threshold: 85  # percent
 
 transcription:
-  model: 'tiny'
+  model: 'tiny'  # tiny, base, small, medium, large
   use_gpu: false
   batch_size: 1
-  chunk_duration: 30
+  chunk_duration: 30  # seconds
 
 video_processing:
-  max_frames: 10
-  frame_mode: 'interval'
-  frame_interval: 60
+  max_frames: 20
+  frame_mode: 'interval'  # interval, scenes
+  frame_interval: 60  # seconds
   max_resolution: '720p'
 
 blip:
   enabled: false  # Отключаем генерацию описаний кадров через BLIP
+  model: 'Salesforce/blip-image-captioning-base'
+  max_length: 50
 
 parallel_processing:
   enabled: false
@@ -35,6 +37,20 @@ parallel_processing:
 server:
   host: "0.0.0.0"
   port: 8080
+  workers: 2
+  threads: 4
+  timeout: 120
+
+redis:
+  url: "redis://redis:6379/0"
+  max_connections: 10
+  socket_timeout: 5
+
+celery:
+  concurrency: 2
+  task_timeout: 3600
+  max_retries: 3
+  retry_delay: 300
 
 youtube_api:
   credentials_file: "client_secrets.json"
@@ -43,13 +59,31 @@ youtube_api:
     - "https://www.googleapis.com/auth/youtube.readonly"
 
 network:
-  timeout: 300  # Таймаут для сетевых запросов
-  retries: 3    # Количество попыток
+  timeout: 300  # seconds
+  retries: 3
+  retry_delay: 5  # seconds
 
 storage:
-  cleanup_interval: 3600  # Интервал очистки временных файлов
-  max_file_age: 86400    # Максимальное время хранения файлов
+  video_max_size: 500  # MB
+  cleanup_interval: 3600  # seconds
+  temp_file_ttl: 86400  # seconds (24 hours)
+  max_file_age: 86400  # seconds (24 hours)
 
 pdf:
   template: 'default'
   max_size: 50  # MB
+  compression: 'medium'  # low, medium, high
+  image_quality: 85
+  dpi: 150
+
+processing:
+  max_frames: 20
+  audio_format: "wav"
+  video_format: "mp4"
+  pdf_quality: "high"
+
+monitoring:
+  enabled: true
+  log_level: "INFO"
+  metrics_port: 9090
+  alert_threshold: 90  # percent

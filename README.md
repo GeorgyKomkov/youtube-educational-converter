@@ -33,6 +33,18 @@
    - `client_secrets.json` - для OAuth аутентификации
    - `api.txt` - для API ключа
 
+## Настройка cookies для YouTube
+
+1. Войдите в свой аккаунт YouTube в браузере Chrome
+2. Установите расширение "Get cookies.txt"
+3. Экспортируйте cookies с youtube.com
+4. Сохраните их в `config/youtube.cookies`
+
+Или используйте yt-dlp для экспорта cookies:
+```bash
+yt-dlp --cookies-from-browser chrome
+```
+
 ## Запуск
 
 ### Локальный запуск

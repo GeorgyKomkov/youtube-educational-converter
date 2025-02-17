@@ -10,5 +10,19 @@
     "secure": true,
     "session": false,
     "value": "YES+cb"
+  },
+  {
+    "domain": ".youtube.com",
+    "name": "VISITOR_INFO1_LIVE",
+    "value": "your_visitor_info_value",
+    "path": "/",
+    "secure": true
+  },
+  {
+    "domain": ".youtube.com",
+    "name": "LOGIN_INFO",
+    "value": "your_login_info_value",
+    "path": "/",
+    "secure": true
   }
 ]

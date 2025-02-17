@@ -3,7 +3,7 @@ version: '3.8'
 services:
   redis:
     image: redis:alpine
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     healthcheck:
@@ -14,17 +14,12 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
-        reservations:
-          memory: 128M
+          memory: 512M
 
   server:
-    build: 
-      context: .
-      dockerfile: Dockerfile
-    command: python -m gunicorn src.server:app --bind 0.0.0.0:8080 --workers 1 --threads 2 --timeout 120
+    build: .
+    command: ./start.sh
     volumes:
-      - ./config:/app/config:ro
       - ./videos:/app/videos
       - ./output:/app/output
       - ./temp:/app/temp
@@ -33,13 +28,11 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
-      - PYTHONUNBUFFERED=1
-      - FLASK_ENV=production
-      - GUNICORN_WORKERS=1
-      - GUNICORN_THREADS=2
-      - GUNICORN_TIMEOUT=120
-      - CLEANUP_INTERVAL=300  # Очистка каждые 5 минут
-      - MAX_FILE_AGE=1800    # Файлы старше 30 минут удаляются
+      - YOUTUBE_CLIENT_ID=${YOUTUBE_CLIENT_ID}
+      - YOUTUBE_CLIENT_SECRET=${YOUTUBE_CLIENT_SECRET}
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+      - FLASK_APP=src.server
+      - PYTHONPATH=/app
     depends_on:
       redis:
         condition: service_healthy
@@ -51,17 +44,11 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
-        reservations:
-          memory: 384M
-    ports:
-      - "8080:8080"
+          memory: 2G
 
   worker:
-    build: 
-      context: .
-      dockerfile: Dockerfile
-    command: celery -A src.server:celery worker --loglevel=info --concurrency=2
+    build: .
+    command: celery -A src.server.celery worker --loglevel=info
     volumes:
       - ./videos:/app/videos
       - ./output:/app/output
@@ -71,21 +58,24 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
-      - PYTHONUNBUFFERED=1
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
+    healthcheck:
+      test: ["CMD", "celery", "-A", "src.server.celery", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     deploy:
       resources:
         limits:
-          memory: 1G
-        reservations:
-          memory: 512M
+          memory: 4G
 
 volumes:
   redis_data:
-    driver: local
 
 networks:
-  app_network:
+  default:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

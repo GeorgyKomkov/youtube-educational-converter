@@ -11,6 +11,7 @@ ExecStart=/usr/local/bin/docker-compose up -d
 ExecStop=/usr/local/bin/docker-compose down
 Restart=on-failure
 RestartSec=10
+ExecStartPre=/bin/mkdir -p /root/youtube-converter/static/css /root/youtube-converter/static/js /root/youtube-converter/templates
 
 [Install]
 WantedBy=multi-user.target
