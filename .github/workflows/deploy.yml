@@ -47,7 +47,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "."
-          target: "/root/youtube-converter"
+          target: "/home/ubuntu/youtube-converter"
       
       - name: Deploy application
         uses: appleboy/ssh-action@v1.0.0
@@ -56,7 +56,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /root/youtube-converter
+            cd /home/ubuntu/youtube-converter
             
             # Создаем credentials
             echo "Creating credentials files..."
@@ -64,49 +64,33 @@ jobs:
             echo '${{ secrets.YOUTUBE_API_KEY }}' > api.txt
             chmod 644 client_secrets.json api.txt
             
-            # Проверяем сборку
+            echo "Stopping running containers..."
+            docker stop $(docker ps -q) || true
+            docker rm $(docker ps -aq) || true
+            docker network prune -f || true
+
+            echo "Cleaning up Docker system..."
+            docker system prune -af --volumes
+            
             echo "Building containers..."
             docker-compose build --no-cache --progress=plain
             
             echo "Starting containers..."
-            docker-compose down
-            docker system prune -f
             docker-compose up -d
             
-            # Проверяем запуск контейнеров
-            echo "Checking containers..."
+            echo "Waiting for containers..."
             sleep 30
-            if ! docker-compose ps | grep "Up"; then
-              echo "Error: Containers failed to start"
-              docker-compose logs
-              exit 1
-            fi
-            
-            echo "Waiting for container to initialize..."
-            sleep 45
-            
-            echo "Docker logs:"
+            docker-compose ps
             docker-compose logs
-            
-            echo "Container status:"
-            docker ps -a
-            
-            echo "Memory usage:"
-            free -h
-            
-            echo "Disk space:"
-            df -h
 
       - name: Verify deployment
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
-          # Создаем временный ключ для SSH
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           
-          # Увеличиваем время ожидания
           sleep 180
           
           for i in {1..5}; do
@@ -116,10 +100,9 @@ jobs:
               exit 0
             fi
             
-            # Проверяем логи при неудаче
             echo "Attempt $i failed. Checking logs..."
-            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@${{ secrets.SSH_HOST }} '
-              cd /root/youtube-converter && 
+            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} '
+              cd /home/ubuntu/youtube-converter && 
               echo "Container status:" &&
               docker-compose ps &&
               echo "\nServer logs:" &&
@@ -128,15 +111,8 @@ jobs:
               docker-compose logs worker
             '
             
-            echo "Waiting before next attempt..."
             sleep 60
           done
           
           echo "Service failed to start properly"
-          echo "Final container status and logs:"
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@${{ secrets.SSH_HOST }} '
-            cd /root/youtube-converter &&
-            docker-compose ps &&
-            docker-compose logs
-          '
           exit 1
