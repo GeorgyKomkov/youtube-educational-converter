@@ -10,47 +10,55 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       
-      - name: Set working directory
-        run: |
-          mkdir -p /root/youtube-converter
-          cp -r ./* /root/youtube-converter/
-          cd /root/youtube-converter
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          name: id_ed25519 # имя файла ключа
+          known_hosts: ${{ secrets.SSH_HOST }}
+          
+      - name: Add known hosts
+        run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
       
-      - name: Install Docker Compose
+      - name: Deploy to server
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
         run: |
-          sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-          sudo chmod +x /usr/local/bin/docker-compose
-          docker-compose --version
-      
-      - name: Create required directories
-        working-directory: /root/youtube-converter
-        run: |
-          mkdir -p videos output temp cache/models logs
-          chmod -R 777 videos output temp cache logs
-      
-      - name: Setup environment
-        working-directory: /root/youtube-converter
-        run: |
-          echo "${{ secrets.YOUTUBE_API_KEY }}" > api.txt
-          echo "${{ secrets.CLIENT_SECRETS }}" > client_secrets.json
-      
-      - name: Build and start containers
-        working-directory: /root/youtube-converter
-        run: |
-          docker-compose down
-          docker-compose build --no-cache
-          docker-compose up -d
-      
-      - name: Show container status
-        working-directory: /root/youtube-converter
-        run: |
-          docker-compose ps
-          docker-compose logs
-      
-      - name: Install systemd service
-        working-directory: /root/youtube-converter
-        run: |
-          sudo cp systemd/youtube-converter.service /etc/systemd/system/
-          sudo systemctl daemon-reload
-          sudo systemctl enable youtube-converter
-          sudo systemctl restart youtube-converter
+          # Копируем файлы на сервер
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "mkdir -p /root/youtube-converter"
+          scp -r ./* ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/root/youtube-converter/
+          
+          # Выполняем команды на сервере
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            cd /root/youtube-converter
+            
+            # Устанавливаем Docker Compose
+            curl -L 'https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-$(uname -s)-$(uname -m)' -o /usr/local/bin/docker-compose
+            chmod +x /usr/local/bin/docker-compose
+            
+            # Создаем директории и устанавливаем права
+            mkdir -p videos output temp cache/models logs
+            chmod -R 777 videos output temp cache logs
+            
+            # Создаем файлы с секретами
+            echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
+            echo '${{ secrets.YOUTUBE_API_KEY }}' > api.txt
+            
+            # Останавливаем и удаляем старые контейнеры
+            docker-compose down
+            
+            # Собираем и запускаем новые контейнеры
+            docker-compose build --no-cache
+            docker-compose up -d
+            
+            # Устанавливаем systemd сервис
+            cp systemd/youtube-converter.service /etc/systemd/system/
+            systemctl daemon-reload
+            systemctl enable youtube-converter
+            systemctl restart youtube-converter
+            
+            # Показываем статус
+            docker-compose ps
+            docker-compose logs
+          "
