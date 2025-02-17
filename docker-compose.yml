@@ -24,12 +24,12 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./videos:/app/videos
-      - ./output:/app/output
-      - ./temp:/app/temp
-      - ./logs:/app/logs
-      - ./client_secrets.json:/app/client_secrets.json:ro
-      - ./api.txt:/app/api.txt:ro
+      - /root/youtube-converter/videos:/app/videos
+      - /root/youtube-converter/output:/app/output
+      - /root/youtube-converter/temp:/app/temp
+      - /root/youtube-converter/logs:/app/logs
+      - /root/youtube-converter/client_secrets.json:/app/client_secrets.json:ro
+      - /root/youtube-converter/api.txt:/app/api.txt:ro
     environment:
       - PYTHONPATH=/app
       - FLASK_APP=src.server
@@ -54,16 +54,17 @@ services:
         reservations:
           cpus: '0.2'
           memory: 256M
+    working_dir: /app
 
   worker:
     build: .
     volumes:
-      - ./videos:/app/videos
-      - ./output:/app/output
-      - ./temp:/app/temp
-      - ./logs:/app/logs
-      - ./client_secrets.json:/app/client_secrets.json:ro
-      - ./api.txt:/app/api.txt:ro
+      - /root/youtube-converter/videos:/app/videos
+      - /root/youtube-converter/output:/app/output
+      - /root/youtube-converter/temp:/app/temp
+      - /root/youtube-converter/logs:/app/logs
+      - /root/youtube-converter/client_secrets.json:/app/client_secrets.json:ro
+      - /root/youtube-converter/api.txt:/app/api.txt:ro
     environment:
       - PYTHONPATH=/app
       - REDIS_URL=redis://redis:6379/0
@@ -87,6 +88,7 @@ services:
       restart_policy:
         condition: on-failure
         max_attempts: 3
+    working_dir: /app
 
 volumes:
   redis_data:
