@@ -25,9 +25,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Копируем остальные файлы
 COPY . .
 
-# Создаём директории
+# Создаём директории и устанавливаем права
 RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models /app/logs && \
-    chmod -R 777 /app/videos /app/output /app/temp /app/cache /app/logs
+    chmod -R 777 /app/videos /app/output /app/temp /app/cache /app/logs && \
+    chmod +x /app/start.sh
 
 # Переменные окружения
 ENV PYTHONPATH=/app \

@@ -36,6 +36,9 @@ jobs:
           # Копирование файлов
           scp -r ./* $SSH_USER@$SSH_HOST:$DEPLOY_PATH/
           
+          # Установка прав на start.sh
+          ssh $SSH_USER@$SSH_HOST "chmod +x $DEPLOY_PATH/start.sh"
+          
           # Создание client_secrets.json
           ssh $SSH_USER@$SSH_HOST "cat > $DEPLOY_PATH/client_secrets.json << 'EOF'
           {
