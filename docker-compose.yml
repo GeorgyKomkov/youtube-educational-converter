@@ -8,7 +8,7 @@ services:
       resources:
         limits:
           cpus: '0.1'
-          memory: 128M
+          memory: 256M
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -22,14 +22,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 256M
+          cpus: '0.4'
+          memory: 768M
     volumes:
-      - ./videos:/app/videos:rw
-      - ./output:/app/output:rw
-      - ./temp:/app/temp:rw
-      - ./cache:/app/cache:rw
-      - ./logs:/app/logs:rw
+      - ./videos:/app/videos
+      - ./output:/app/output
+      - ./temp:/app/temp
+      - ./cache:/app/cache
+      - ./logs:/app/logs
     environment:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -60,14 +60,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.3'
-          memory: 256M
+          cpus: '0.4'
+          memory: 768M
     volumes:
-      - ./videos:/app/videos:rw
-      - ./output:/app/output:rw
-      - ./temp:/app/temp:rw
-      - ./cache:/app/cache:rw
-      - ./logs:/app/logs:rw
+      - ./videos:/app/videos
+      - ./output:/app/output
+      - ./temp:/app/temp
+      - ./cache:/app/cache
+      - ./logs:/app/logs
     environment:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
