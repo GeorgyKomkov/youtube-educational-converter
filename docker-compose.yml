@@ -7,7 +7,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          cpus: '0.1'
+          memory: 128M
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -15,12 +16,14 @@ services:
       retries: 3
 
   server:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 1G
+          cpus: '0.5'
+          memory: 256M
     volumes:
       - ./videos:/app/videos:rw
       - ./output:/app/output:rw
@@ -50,13 +53,15 @@ services:
       - "8080:8080"
 
   worker:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     command: celery -A src.server.celery worker --loglevel=info
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 2G
+          cpus: '0.3'
+          memory: 256M
     volumes:
       - ./videos:/app/videos:rw
       - ./output:/app/output:rw
