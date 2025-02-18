@@ -25,9 +25,9 @@ jobs:
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
         with:
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}  # Приватный SSH ключ
           name: id_ed25519
-          known_hosts: ${{ secrets.SSH_HOST }}
+          known_hosts: ${{ secrets.SSH_HOST }}  # Хост сервера
           
       - name: Add known hosts
         run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
@@ -45,8 +45,8 @@ jobs:
       
       - name: Deploy to server
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}     # Хост сервера
+          SSH_USER: ${{ secrets.SSH_USER }}     # Пользователь для SSH
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
