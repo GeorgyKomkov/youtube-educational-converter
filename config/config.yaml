@@ -68,6 +68,12 @@ storage:
   cleanup_interval: 3600  # seconds
   temp_file_ttl: 86400  # seconds (24 hours)
   max_file_age: 86400  # seconds (24 hours)
+  temp_dir: "/app/temp"
+  output_dir: "/app/output"
+  video_dir: "/app/videos"
+  cache_dir: "/app/cache"
+  temp_lifetime: 3600  # Время жизни временных файлов (1 час)
+  cache_size_mb: 1000  # Ограничение кэша в 1GB
 
 pdf:
   template: 'default'
@@ -81,6 +87,11 @@ processing:
   audio_format: "wav"
   video_format: "mp4"
   pdf_quality: "high"
+  frame_interval: 10
+  image_quality: 60
+  image_max_width: 800
+  thumbnail_size: [320, 180]
+  max_resolution: 720
 
 monitoring:
   enabled: true
@@ -89,3 +100,16 @@ monitoring:
     request_timeout: 30
     slow_request_threshold: 10
     error_threshold: 50
+
+video:
+  max_resolution: 480  # Ограничиваем качество видео
+  max_size_mb: 500    # Максимальный размер видео
+  cleanup_delay: 300  # Удаление через 5 минут после создания PDF
+
+whisper:
+  model: "tiny"
+  device: "cpu"
+
+cleanup:
+  temp_lifetime: 3600
+  cache_size_mb: 1000

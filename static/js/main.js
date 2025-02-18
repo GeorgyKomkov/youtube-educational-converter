@@ -1,126 +1,82 @@
 async function exportYouTubeCookies() {
     try {
-        // Проверяем поддержку API chrome.cookies
-        if (typeof chrome === 'undefined' || !chrome.cookies) {
-            throw new Error('Chrome cookies API is not available');
-        }
-
-        // Получаем cookies для youtube.com
-        const cookies = await chrome.cookies.getAll({domain: ".youtube.com"});
+        // Получаем куки через document.cookie
+        const cookies = document.cookie
+            .split(';')
+            .map(cookie => cookie.trim())
+            .filter(cookie => cookie.startsWith('YT'));
         
-        // Проверяем наличие cookies
-        if (!cookies || cookies.length === 0) {
-            throw new Error('No YouTube cookies found');
-        }
-
         // Отправляем на сервер
-        const response = await fetch('/api/set-cookies', {
+        const response = await fetch('/save_cookies', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ cookies }),
-            credentials: 'include' // Важно для работы с сессией
+            body: JSON.stringify(cookies)
         });
-        
+
         if (!response.ok) {
-            throw new Error('Failed to set cookies');
+            throw new Error('Failed to save cookies');
         }
-        
-        showAlert('YouTube cookies successfully exported!', 'success');
+
+        showAlert('Cookies successfully exported', 'success');
     } catch (error) {
-        console.error('Error exporting cookies:', error);
         showAlert('Failed to export cookies: ' + error.message, 'error');
     }
 }
 
-async function convertVideo() {
-    const videoUrl = document.getElementById('video-url').value;
-    if (!videoUrl) {
-        showAlert('Please enter YouTube URL', 'error');
+async function startConversion() {
+    const urlInput = document.getElementById('url');
+    const statusDiv = document.getElementById('status');
+    const url = urlInput.value.trim();
+
+    if (!url) {
+        showStatus('Please enter a YouTube URL', 'error');
         return;
     }
 
-    // Показываем индикатор загрузки
-    const statusElement = document.getElementById('status');
-    statusElement.innerHTML = '<div class="loading"></div> Starting conversion...';
-    statusElement.style.display = 'block';
-
     try {
+        // Начинаем конвертацию
         const response = await fetch('/api/convert', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ url: videoUrl }),
-            credentials: 'include'
+            body: JSON.stringify({ url })
         });
 
-        if (!response.ok) {
-            throw new Error('Conversion request failed');
+        const data = await response.json();
+
+        if (data.error) {
+            showStatus(data.error, 'error');
+            return;
         }
 
-        const result = await response.json();
-        if (result.task_id) {
-            checkStatus(result.task_id);
-        } else {
-            throw new Error('No task ID received');
-        }
+        // Начинаем проверять статус
+        checkStatus(data.task_id);
 
     } catch (error) {
-        console.error('Error:', error);
-        showAlert('Failed to start conversion: ' + error.message, 'error');
-        statusElement.style.display = 'none';
+        showStatus('Error starting conversion: ' + error, 'error');
     }
 }
 
-function checkStatus(taskId) {
-    const statusElement = document.getElementById('status');
-    let retryCount = 0;
-    const maxRetries = 60; // 2 минуты при интервале в 2 секунды
+async function checkStatus(taskId) {
+    try {
+        const response = await fetch(`/api/status/${taskId}`);
+        const data = await response.json();
 
-    const checkProgress = async () => {
-        try {
-            const response = await fetch(`/api/status/${taskId}`);
-            if (!response.ok) {
-                throw new Error('Failed to get status');
-            }
-
-            const data = await response.json();
-            
-            switch(data.status) {
-                case 'completed':
-                    showAlert('Conversion completed successfully!', 'success');
-                    window.location.href = data.pdf_url;
-                    statusElement.style.display = 'none';
-                    break;
-                    
-                case 'failed':
-                    throw new Error(data.error || 'Conversion failed');
-                    
-                case 'processing':
-                    statusElement.innerHTML = `
-                        <div class="loading"></div>
-                        Converting video... ${data.progress || ''}
-                    `;
-                    if (retryCount++ < maxRetries) {
-                        setTimeout(checkProgress, 2000);
-                    } else {
-                        throw new Error('Conversion timeout');
-                    }
-                    break;
-                    
-                default:
-                    throw new Error('Unknown status');
-            }
-        } catch (error) {
-            console.error('Error checking status:', error);
-            showAlert('Error: ' + error.message, 'error');
-            statusElement.style.display = 'none';
+        if (data.status === 'completed') {
+            showStatus('Conversion completed! Downloading...', 'success');
+            window.location.href = data.download_url;
+        } else if (data.status === 'failed') {
+            showStatus('Conversion failed: ' + data.error, 'error');
+        } else {
+            showStatus(`Converting... ${data.progress}%`, 'info');
+            setTimeout(() => checkStatus(taskId), 2000);
         }
-    };
-
-    checkProgress();
+    } catch (error) {
+        showStatus('Error checking status: ' + error, 'error');
+    }
 }
 
 function showAlert(message, type) {
@@ -134,4 +90,10 @@ function showAlert(message, type) {
     setTimeout(() => {
         alertDiv.remove();
     }, 5000);
+}
+
+function showStatus(message, type) {
+    const statusDiv = document.getElementById('status');
+    statusDiv.textContent = message;
+    statusDiv.className = type;
 }

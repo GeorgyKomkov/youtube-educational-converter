@@ -1,39 +1,22 @@
 #!/bin/bash
 set -e
 
-# Очистка временных файлов
-cleanup() {
-    echo "Cleaning up..."
-    rm -rf /tmp/* /var/tmp/*
-}
+# Создаем необходимые директории
+mkdir -p /app/temp /app/output /app/videos /app/logs /app/cache
 
-# Регистрируем функцию очистки
-trap cleanup EXIT
+# Устанавливаем права
+chmod -R 777 /app/temp /app/output /app/videos /app/logs /app/cache
 
-# Создание и настройка прав для всех необходимых директорий
-directories=(
-    "/app/videos"
-    "/app/output"
-    "/app/temp"
-    "/app/cache/models"
-    "/app/logs"
-)
-
-for dir in "${directories[@]}"; do
-    mkdir -p "$dir"
-    chmod 777 "$dir"
-done
-
-# Запуск Gunicorn с метриками
-exec gunicorn \
-    --workers=2 \
-    --threads=4 \
-    --bind 0.0.0.0:${PORT:-8080} \
+# Запускаем Gunicorn
+exec gunicorn --bind 0.0.0.0:8080 \
+    --workers 2 \
+    --threads 4 \
     --timeout 120 \
-    --log-level info \
+    --access-logfile /app/logs/access.log \
+    --error-logfile /app/logs/error.log \
     src.server:app
 
 # Файл должен быть исполняемым
 chmod +x start.sh
 
-trap 'cleanup; exit 0' SIGTERM
+trap 'exit 0' SIGTERM

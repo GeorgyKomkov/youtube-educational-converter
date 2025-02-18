@@ -1,19 +1,13 @@
 [Unit]
-Description=YouTube Converter
-Requires=docker.service
-After=docker.service
+Description=YouTube Converter Service
+After=network.target
 
 [Service]
-Type=oneshot
-RemainAfterExit=yes
-User=youtube-converter
-Group=youtube-converter
-WorkingDirectory=/opt/youtube-converter
-ExecStart=/usr/local/bin/docker-compose up -d
-ExecStop=/usr/local/bin/docker-compose down
-Restart=on-failure
-RestartSec=10
-ExecStartPre=/bin/mkdir -p /opt/youtube-converter/static/css /opt/youtube-converter/static/js /opt/youtube-converter/templates
+User=www-data
+WorkingDirectory=/app
+ExecStart=/bin/bash start.sh
+Restart=always
+Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target

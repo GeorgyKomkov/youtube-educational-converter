@@ -6,6 +6,8 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import yt_dlp
 import yaml
+from yt_dlp import YoutubeDL
+from google.oauth2.credentials import Credentials
 
 class YouTubeAPI:
     def __init__(self):
@@ -42,19 +44,11 @@ class YouTubeAPI:
     def _load_api_key(self):
         """Загрузка API ключа"""
         try:
-            api_key = os.environ.get('YOUTUBE_API_KEY')
-            if api_key:
-                return api_key
-                
-            api_key_path = os.path.join('config', 'api.txt')
-            if os.path.exists(api_key_path):
-                with open(api_key_path, 'r') as f:
-                    return f.read().strip()
-            
-            raise ValueError("YouTube API key not found")
+            with open('api.txt', 'r') as f:
+                return f.read().strip()
         except Exception as e:
-            self.logger.error(f"Error loading API key: {e}")
-            raise
+            self.logger.error(f"Failed to load API key: {e}")
+            return None
 
     def _load_client_secrets(self):
         """Загрузка client secrets"""
@@ -150,3 +144,21 @@ class YouTubeAPI:
                 self.youtube.close()
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")
+
+    def download_video(self, video_url, output_path):
+        try:
+            ydl_opts = {
+                'format': 'best[height<=720]',
+                'outtmpl': output_path,
+                'quiet': True,
+                'no_warnings': True,
+                'cookiefile': 'config/cookies.txt'  # Используем стандартный формат cookies
+            }
+            
+            with YoutubeDL(ydl_opts) as ydl:
+                ydl.download([video_url])
+                
+            return output_path
+        except Exception as e:
+            self.logger.error(f"Failed to download video: {e}")
+            raise

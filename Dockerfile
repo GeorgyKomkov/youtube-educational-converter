@@ -1,5 +1,5 @@
 # Используем более легкий базовый образ
-FROM python:3.10-slim
+FROM python:3.9-slim
 
 # Устанавливаем рабочую директорию
 WORKDIR /app
@@ -9,8 +9,6 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     wkhtmltopdf \
     ghostscript \
-    curl \
-    bc \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем только requirements.txt
@@ -20,7 +18,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Копируем остальные файлы
-COPY . .
+COPY src/ src/
+COPY config/ config/
+COPY static/ static/
+COPY templates/ templates/
 
 # Создаём директории и устанавливаем права
 RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models /app/logs && \
@@ -37,4 +38,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-CMD ["./start.sh"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "src.server:app"]

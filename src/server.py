@@ -19,6 +19,8 @@ import shutil
 from werkzeug.exceptions import NotFound
 from prometheus_client import start_http_server, Counter, Histogram
 import sys
+import json
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # Импортируем нужные модули
 from src.youtube_api import YouTubeAPI
@@ -43,7 +45,7 @@ def load_config():
             config = yaml.safe_load(f)
             
         # Проверяем обязательные параметры
-        required_params = ['temp_dir', 'memory', 'server']
+        required_params = ['temp_dir', 'memory', 'server', 'storage']
         for param in required_params:
             if param not in config:
                 raise ValueError(f"Missing required parameter: {param}")
@@ -60,6 +62,11 @@ def load_config():
             'server': {
                 'host': '0.0.0.0',
                 'port': 8080
+            },
+            'storage': {
+                'temp_lifetime': 3600,
+                'cache_size_mb': 1000,
+                'cache_dir': TEMP_DIR
             }
         }
 
@@ -202,6 +209,20 @@ def set_cookies():
         logger.error(f"Error setting cookies: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/save_cookies', methods=['POST'])
+def save_cookies():
+    try:
+        cookies = request.json
+        
+        # Сохраняем в config/youtube.cookies
+        with open('config/youtube.cookies', 'w') as f:
+            json.dump(cookies, f, indent=2)
+            
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        app.logger.error(f"Failed to save cookies: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/static/<path:path>')
 def send_static(path):
     """Отправка статических файлов"""
@@ -262,53 +283,36 @@ def cleanup_temp(temp_dir):
         logger.error(f"Error cleaning temp directory: {e}")
 
 def cleanup_old_files():
-    """Очистка старых временных файлов"""
-    while True:
-        try:
-            for dir_path in [VIDEO_DIR, OUTPUT_DIR]:
-                if not os.path.exists(dir_path):
-                    continue
-                    
-                for file in os.listdir(dir_path):
-                    try:
-                        file_path = os.path.join(dir_path, file)
-                        if time.time() - os.path.getmtime(file_path) > 24*60*60:
-                            if os.path.isfile(file_path):
-                                os.remove(file_path)
-                            elif os.path.isdir(file_path):
-                                shutil.rmtree(file_path)
-                    except Exception as e:
-                        logger.error(f"Error removing old file {file_path}: {e}")
-        except Exception as e:
-            logger.error(f"Error in cleanup_old_files: {e}")
-        time.sleep(config['memory'].get('cleanup_interval', 3600))
-
-def monitor_resources():
-    """Мониторинг ресурсов сервера"""
-    while True:
-        try:
-            # Проверка памяти
-            memory = psutil.virtual_memory()
-            if memory.percent > config['memory']['emergency_cleanup_threshold']:
-                logger.warning(f"Memory usage critical: {memory.percent}%")
-                cleanup_temp(config['temp_dir'])
+    """Очистка старых файлов"""
+    try:
+        # Очистка временных файлов
+        temp_lifetime = app.config['storage']['temp_lifetime']
+        temp_dir = app.config['storage']['temp_dir']
+        
+        current_time = time.time()
+        for file in os.listdir(temp_dir):
+            file_path = os.path.join(temp_dir, file)
+            if os.path.getctime(file_path) + temp_lifetime < current_time:
+                os.remove(file_path)
                 
-            # Проверка диска
-            disk = psutil.disk_usage('/')
-            if disk.percent > 90:
-                logger.warning(f"Disk usage critical: {disk.percent}%")
-                cleanup_temp(config['temp_dir'])
+        # Очистка кэша если превышен лимит
+        cache_size = app.config['storage']['cache_size_mb'] * 1024 * 1024
+        cache_dir = app.config['storage']['cache_dir']
+        
+        total_size = sum(os.path.getsize(f) for f in os.listdir(cache_dir))
+        if total_size > cache_size:
+            files = sorted(os.listdir(cache_dir), 
+                         key=lambda x: os.path.getctime(os.path.join(cache_dir, x)))
+            while total_size > cache_size and files:
+                os.remove(os.path.join(cache_dir, files.pop(0)))
                 
-        except Exception as e:
-            logger.error(f"Error in monitor_resources: {e}")
-        time.sleep(60)
+    except Exception as e:
+        app.logger.error(f"Error in cleanup: {e}")
 
-# Запуск фоновых задач
-cleanup_thread = threading.Thread(target=cleanup_old_files, daemon=True)
-cleanup_thread.start()
-
-monitor_thread = threading.Thread(target=monitor_resources, daemon=True)
-monitor_thread.start()
+# Запускаем очистку каждый час
+scheduler = BackgroundScheduler()
+scheduler.add_job(cleanup_old_files, 'interval', hours=1)
+scheduler.start()
 
 @app.before_request
 def before_request():

@@ -10,6 +10,7 @@ import yaml
 import whisper
 import logging.config
 import shutil
+import cv2
 
 # Настройка логирования
 def setup_logging():
@@ -94,59 +95,113 @@ def cleanup_temp(temp_dir):
         logger.error(f"Error cleaning temp directory: {e}")
         raise
 
-def process_video(video_path, output_dir=None):
-    """
-    Обработка видео: извлечение аудио, транскрибация и создание PDF
-    
-    Args:
-        video_path (str): Путь к видеофайлу
-        output_dir (str, optional): Директория для выходных файлов
+class VideoProcessor:
+    def __init__(self, config):
+        self.config = config
+        self.logger = logging.getLogger(__name__)
+        self.audio_extractor = AudioExtractor()
+        self.output_generator = OutputGenerator()
         
-    Returns:
-        str: Путь к созданному PDF файлу
-    """
-    try:
-        # Проверка входных данных
-        if not os.path.exists(video_path):
-            raise FileNotFoundError(f"Video file not found: {video_path}")
+        # Инициализация Whisper с маленькой моделью
+        self.whisper_model = whisper.load_model("tiny")
+
+    def process_video(self, video_path):
+        try:
+            # Извлекаем аудио в низком качестве
+            audio_path = self._extract_audio(video_path)
             
-        output_dir = output_dir or config['output_dir']
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Проверка места на диске
-        check_disk_space(output_dir)
-        
-        # Извлечение аудио
-        audio_path = extract_audio(video_path, config)
-        if not audio_path:
-            raise RuntimeError("Failed to extract audio")
+            # Получаем текст через tiny модель Whisper
+            text = self._transcribe_audio(audio_path)
             
-        # Транскрибация
-        transcription = transcribe_audio(audio_path, config)
-        if not transcription:
-            raise RuntimeError("Failed to transcribe audio")
+            # Извлекаем ключевые кадры с оптимизацией
+            frames = self._extract_frames(video_path)
             
-        # Извлечение кадров
-        frames = extract_frames(video_path, config)
-        if not frames:
-            raise RuntimeError("Failed to extract frames")
+            # Генерируем PDF
+            pdf_path = self._generate_pdf(text, frames)
             
-        # Генерация PDF
-        output_generator = OutputGenerator(output_dir)
-        result = output_generator.generate({
-            'title': os.path.splitext(os.path.basename(video_path))[0],
-            'segments': transcription,
-            'frames': frames
-        })
-        
-        return result['pdf']
-        
-    except Exception as e:
-        logger.error(f"Error processing video: {e}")
-        raise
-    finally:
-        # Очистка временных файлов
-        cleanup_temp(config['temp_dir'])
+            # Очищаем временные файлы
+            self._cleanup([video_path, audio_path])
+            
+            return pdf_path
+            
+        except Exception as e:
+            self.logger.error(f"Error processing video: {e}")
+            self._cleanup([video_path, audio_path])
+            raise
+
+    def _extract_audio(self, video_path):
+        """Извлечение аудио из видео в низком качестве"""
+        try:
+            return self.audio_extractor.extract(
+                video_path, 
+                quality='low',
+                sample_rate=16000
+            )
+        except Exception as e:
+            self.logger.error(f"Error extracting audio: {e}")
+            raise
+
+    def _transcribe_audio(self, audio_path):
+        """Транскрибация аудио через Whisper"""
+        try:
+            result = self.whisper_model.transcribe(
+                audio_path,
+                language='ru'
+            )
+            return result['text']
+        except Exception as e:
+            self.logger.error(f"Error transcribing audio: {e}")
+            raise
+
+    def _extract_frames(self, video_path):
+        """Извлечение кадров с оптимизацией"""
+        try:
+            cap = cv2.VideoCapture(video_path)
+            frames = []
+            interval = self.config['processing']['frame_interval']
+            
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                    
+                # Уменьшаем размер
+                width = self.config['processing']['image_max_width']
+                height = int(frame.shape[0] * width / frame.shape[1])
+                frame = cv2.resize(frame, (width, height))
+                
+                # Сохраняем с низким качеством
+                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 
+                              self.config['processing']['image_quality']]
+                _, buffer = cv2.imencode('.jpg', frame, encode_param)
+                frames.append(buffer)
+                
+                # Пропускаем кадры согласно интервалу
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 
+                       cap.get(cv2.CAP_PROP_POS_FRAMES) + interval)
+            
+            cap.release()
+            return frames
+        except Exception as e:
+            self.logger.error(f"Error extracting frames: {e}")
+            raise
+
+    def _generate_pdf(self, text, frames):
+        """Генерация PDF с текстом и кадрами"""
+        try:
+            return self.output_generator.generate(text, frames)
+        except Exception as e:
+            self.logger.error(f"Error generating PDF: {e}")
+            raise
+
+    def _cleanup(self, files):
+        """Очистка временных файлов"""
+        for file in files:
+            try:
+                if file and os.path.exists(file):
+                    os.remove(file)
+            except Exception as e:
+                self.logger.error(f"Error cleaning up {file}: {e}")
 
 def extract_audio(video_path, config):
     """Извлечение аудио из видео"""
@@ -191,7 +246,8 @@ if __name__ == "__main__":
     
     try:
         video_path = sys.argv[1]
-        pdf_path = process_video(video_path)
+        processor = VideoProcessor(config)  # Используем класс напрямую
+        pdf_path = processor.process_video(video_path)
         logger.info(f"Processing completed successfully! Output: {pdf_path}")
     except Exception as e:
         logger.error(f"Processing failed: {e}")

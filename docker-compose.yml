@@ -3,39 +3,36 @@ version: '3.8'
 services:
   redis:
     image: redis:alpine
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
-    volumes:
-      - redis_data:/data
-    restart: always
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 256M
 
   server:
     build: .
-    command: ./start.sh
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
     volumes:
-      - ./videos:/app/videos
-      - ./output:/app/output
-      - ./temp:/app/temp
-      - ./cache:/app/cache
-      - ./logs:/app/logs
+      - ./videos:/app/videos:rw
+      - ./output:/app/output:rw
+      - ./temp:/app/temp:rw
+      - ./cache:/app/cache:rw
+      - ./logs:/app/logs:rw
     environment:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
-      - YOUTUBE_CLIENT_ID=${YOUTUBE_CLIENT_ID}
-      - YOUTUBE_CLIENT_SECRET=${YOUTUBE_CLIENT_SECRET}
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
       - FLASK_APP=src.server
       - FLASK_ENV=production
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
+      - WHISPER_MODEL=tiny
+      - MAX_WORKERS=2
     depends_on:
       redis:
         condition: service_healthy
@@ -45,10 +42,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    deploy:
-      resources:
-        limits:
-          memory: 2G
     ports:
       - "8080:8080"
 

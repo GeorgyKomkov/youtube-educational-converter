@@ -3,9 +3,9 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: 'youtube-converter'
+  - job_name: 'youtube_converter'
     static_configs:
-      - targets: ['server:9090']
+      - targets: ['localhost:9090']
 
   - job_name: 'redis'
     static_configs:
