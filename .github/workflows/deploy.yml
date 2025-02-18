@@ -20,15 +20,13 @@ jobs:
       
       - name: Setup environment variables
         run: |
-          {
-            echo "SSH_HOST=${{ secrets.SSH_HOST }}"
-            echo "SSH_USER=${{ secrets.SSH_USER }}"
-            echo "SSH_KEY=${{ secrets.SSH_PRIVATE_KEY }}"
-            echo "SSH_KNOWN_HOSTS=${{ secrets.SSH_HOST_KEY }}"
-            echo "YOUTUBE_ID=${{ secrets.YOUTUBE_CLIENT_ID }}"
-            echo "YOUTUBE_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }}"
-            echo "YOUTUBE_KEY=${{ secrets.YOUTUBE_API_KEY }}"
-          } >> $GITHUB_ENV
+          echo "SSH_HOST=${{ secrets.SSH_HOST }}" >> $GITHUB_ENV
+          echo "SSH_USER=${{ secrets.SSH_USER }}" >> $GITHUB_ENV
+          echo "SSH_KEY=${{ secrets.SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
+          echo "SSH_KNOWN_HOSTS=${{ secrets.SSH_HOST_KEY }}" >> $GITHUB_ENV
+          echo "YOUTUBE_ID=${{ secrets.YOUTUBE_CLIENT_ID }}" >> $GITHUB_ENV
+          echo "YOUTUBE_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }}" >> $GITHUB_ENV
+          echo "YOUTUBE_KEY=${{ secrets.YOUTUBE_API_KEY }}" >> $GITHUB_ENV
       
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
