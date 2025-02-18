@@ -4,6 +4,7 @@ disable_existing_loggers: false
 formatters:
     default:
         format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        datefmt: '%Y-%m-%d %H:%M:%S'
 
 handlers:
     console:
@@ -13,10 +14,13 @@ handlers:
         stream: ext://sys.stdout
 
     file:
-        class: logging.FileHandler
+        class: logging.handlers.RotatingFileHandler
         level: INFO
         formatter: default
         filename: /app/logs/app.log
+        maxBytes: 10485760  # 10MB
+        backupCount: 5
+        encoding: utf8
 
     error_file:
         class: logging.handlers.RotatingFileHandler
@@ -27,18 +31,12 @@ handlers:
         backupCount: 5
         encoding: utf8
 
-root:
-    level: INFO
-    handlers: [console, file]
-    propagate: yes
-
 loggers:
-    youtube_api:
+    root:
         level: INFO
         handlers: [console, file, error_file]
-        propagate: false
-    
-    process_video:
+
+    youtube_api:
         level: INFO
         handlers: [console, file, error_file]
         propagate: false

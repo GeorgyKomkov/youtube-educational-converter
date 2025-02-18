@@ -8,6 +8,11 @@ services:
       resources:
         limits:
           memory: 256M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   server:
     build: .
@@ -41,34 +46,32 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
     ports:
       - "8080:8080"
 
   worker:
     build: .
     command: celery -A src.server.celery worker --loglevel=info
-    volumes:
-      - ./videos:/app/videos
-      - ./output:/app/output
-      - ./temp:/app/temp
-      - ./cache:/app/cache
-      - ./logs:/app/logs
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - PYTHONUNBUFFERED=1
-    depends_on:
-      - redis
-    healthcheck:
-      test: ["CMD", "celery", "-A", "src.server.celery", "inspect", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     deploy:
       resources:
         limits:
-          memory: 4G
+          cpus: '2'
+          memory: 2G
+    volumes:
+      - ./videos:/app/videos:rw
+      - ./output:/app/output:rw
+      - ./temp:/app/temp:rw
+      - ./cache:/app/cache:rw
+      - ./logs:/app/logs:rw
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - WHISPER_MODEL=tiny
+    depends_on:
+      redis:
+        condition: service_healthy
 
   prometheus:
     image: prom/prometheus:latest

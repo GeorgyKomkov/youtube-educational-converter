@@ -23,8 +23,8 @@ import json
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # Импортируем нужные модули
-from src.youtube_api import YouTubeAPI
-from src.process_video import process_video
+from .youtube_api import YouTubeAPI
+from .process_video import VideoProcessor
 
 # Настройка логирования
 logging.basicConfig(
@@ -79,6 +79,7 @@ app = Flask(__name__,
     template_folder='templates'
 )
 app.secret_key = os.environ.get('FLASK_SECRET_KEY') or os.urandom(24)
+app.config.from_file('config/config.yaml', load=yaml.safe_load)
 
 # Добавить проверку существования директорий при старте
 for directory in [VIDEO_DIR, OUTPUT_DIR, TEMP_DIR]:
@@ -90,55 +91,57 @@ for directory in [VIDEO_DIR, OUTPUT_DIR, TEMP_DIR]:
         sys.exit(1)
 
 # Конфигурация Celery
-celery = Celery('youtube_converter')
-celery.conf.update(
-    broker_url=os.environ.get('CELERY_BROKER_URL', 'redis://redis:6379/0'),
-    result_backend=os.environ.get('REDIS_URL', 'redis://redis:6379/0'),
-    task_serializer='json',
-    accept_content=['json'],
-    result_serializer='json',
-    timezone='UTC',
-    enable_utc=True,
-    task_acks_late=True,
-    task_reject_on_worker_lost=True,
-    worker_prefetch_multiplier=1,
-    task_time_limit=3600,
-    task_soft_time_limit=3300
-)
-
-# Подключение к Redis
-redis_client = redis.from_url(
-    os.environ.get('REDIS_URL', 'redis://redis:6379/0'),
-    decode_responses=True
-)
+redis_url = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
+celery = Celery('tasks', broker=redis_url)
+redis_client = redis.from_url(redis_url, decode_responses=True)
 
 # Инициализация YouTube API
 youtube_api = YouTubeAPI()
 
 # Метрики
-REQUEST_COUNT = Counter('request_count', 'App Request Count', ['method', 'endpoint', 'status'])
-REQUEST_LATENCY = Histogram('request_latency_seconds', 'Request latency')
+REQUEST_COUNT = Counter('request_count_total', 'Total request count', ['method', 'endpoint', 'status'])
+REQUEST_LATENCY = Histogram('request_latency_seconds', 'Request latency in seconds')
 
-@celery.task(bind=True)
-def process_video_task(self, video_url, user_cookies=None):
-    """Celery задача для обработки видео"""
+# Блокировка для синхронизации
+cleanup_lock = threading.Lock()
+
+@celery.task(bind=True, max_retries=3)
+def process_video_task(self, video_url):
     try:
-        # Получаем информацию о видео
-        video_info = youtube_api.get_video_info(video_url, user_cookies)
-        if not video_info:
-            raise ValueError("Failed to get video info")
+        processor = VideoProcessor(app.config)
+        return processor.process_video(video_url)
+    except Exception as exc:
+        logger.error(f"Error processing video: {exc}")
+        self.retry(exc=exc, countdown=60)
 
-        # Обработка видео
-        result = process_video(video_info['path'])
+def check_disk_space():
+    """Проверка и очистка диска при необходимости"""
+    with cleanup_lock:
+        try:
+            for path in [app.config['temp_dir'], app.config['output_dir']]:
+                usage = psutil.disk_usage(path)
+                if usage.percent > app.config['storage']['emergency_cleanup_threshold']:
+                    cleanup_old_files(path)
+        except Exception as e:
+            logger.error(f"Error in disk space check: {e}")
+
+def cleanup_old_files(directory):
+    """Очистка старых файлов"""
+    try:
+        current_time = time.time()
+        max_age = app.config['storage']['max_file_age']
         
-        return {
-            'status': 'success',
-            'video_path': result['output_path'],
-            'title': video_info['title']
-        }
+        for root, _, files in os.walk(directory):
+            for file in files:
+                file_path = os.path.join(root, file)
+                if os.path.getctime(file_path) + max_age < current_time:
+                    try:
+                        os.remove(file_path)
+                        logger.info(f"Removed old file: {file_path}")
+                    except Exception as e:
+                        logger.error(f"Error removing file {file_path}: {e}")
     except Exception as e:
-        logger.error(f"Error processing video: {e}")
-        raise
+        logger.error(f"Error in cleanup: {e}")
 
 @app.route('/')
 def index():
@@ -153,11 +156,8 @@ def convert_video():
         if not data or 'url' not in data:
             return jsonify({'error': 'No URL provided'}), 400
 
-        # Получаем cookies из сессии
-        user_cookies = session.get('youtube_cookies')
-        
         # Создаем задачу
-        task = process_video_task.delay(data['url'], user_cookies)
+        task = process_video_task.delay(data['url'])
         
         return jsonify({
             'status': 'processing',
@@ -265,68 +265,34 @@ def handle_not_found(e):
         return f"Static file {request.path} not found", 404
     return render_template('index.html'), 404
 
-def cleanup_temp(temp_dir):
-    """Очистка временной директории"""
-    try:
-        if os.path.exists(temp_dir):
-            for item in os.listdir(temp_dir):
-                item_path = os.path.join(temp_dir, item)
-                try:
-                    if os.path.isfile(item_path):
-                        os.unlink(item_path)
-                    elif os.path.isdir(item_path):
-                        shutil.rmtree(item_path)
-                except Exception as e:
-                    logger.error(f"Error removing {item_path}: {e}")
-        logger.info(f"Temporary directory {temp_dir} cleaned")
-    except Exception as e:
-        logger.error(f"Error cleaning temp directory: {e}")
-
-def cleanup_old_files():
-    """Очистка старых файлов"""
-    try:
-        # Очистка временных файлов
-        temp_lifetime = app.config['storage']['temp_lifetime']
-        temp_dir = app.config['storage']['temp_dir']
-        
-        current_time = time.time()
-        for file in os.listdir(temp_dir):
-            file_path = os.path.join(temp_dir, file)
-            if os.path.getctime(file_path) + temp_lifetime < current_time:
-                os.remove(file_path)
-                
-        # Очистка кэша если превышен лимит
-        cache_size = app.config['storage']['cache_size_mb'] * 1024 * 1024
-        cache_dir = app.config['storage']['cache_dir']
-        
-        total_size = sum(os.path.getsize(f) for f in os.listdir(cache_dir))
-        if total_size > cache_size:
-            files = sorted(os.listdir(cache_dir), 
-                         key=lambda x: os.path.getctime(os.path.join(cache_dir, x)))
-            while total_size > cache_size and files:
-                os.remove(os.path.join(cache_dir, files.pop(0)))
-                
-    except Exception as e:
-        app.logger.error(f"Error in cleanup: {e}")
-
-# Запускаем очистку каждый час
-scheduler = BackgroundScheduler()
-scheduler.add_job(cleanup_old_files, 'interval', hours=1)
-scheduler.start()
-
 @app.before_request
 def before_request():
     request.start_time = time.time()
 
 @app.after_request
 def after_request(response):
-    request_latency = time.time() - request.start_time
-    REQUEST_COUNT.labels(request.method, request.endpoint, response.status_code).inc()
-    REQUEST_LATENCY.observe(request_latency)
+    try:
+        request_latency = time.time() - request.start_time
+        REQUEST_COUNT.labels(
+            request.method, 
+            request.endpoint, 
+            response.status_code
+        ).inc()
+        REQUEST_LATENCY.observe(request_latency)
+    except Exception as e:
+        logger.error(f"Error recording metrics: {e}")
     return response
 
+# Запуск планировщика очистки
+scheduler = BackgroundScheduler()
+scheduler.add_job(check_disk_space, 'interval', hours=1)
+scheduler.start()
+
 # Запуск сервера метрик Prometheus
-start_http_server(9090)
+try:
+    start_http_server(9090)
+except Exception as e:
+    logger.error(f"Failed to start Prometheus server: {e}")
 
 if __name__ == "__main__":
     app.run(

@@ -1,12 +1,13 @@
 import os
 import sys
 import logging
+from pathlib import Path
 import torch
 from os import statvfs
-from src.audio_extractor import AudioExtractor
-from src.frame_processor import FrameProcessor
-from src.output_generator import OutputGenerator
-import yaml
+from . import config
+from .audio_extractor import AudioExtractor
+from .frame_processor import FrameProcessor
+from .output_generator import OutputGenerator
 import whisper
 import logging.config
 import shutil
@@ -76,13 +77,24 @@ class WhisperModelCache:
     
     @classmethod
     def get_model(cls, model_name, device):
-        try:
-            if cls._model is None:
+        if cls._model is None:
+            try:
                 cls._model = whisper.load_model(model_name, device=device)
-            return cls._model
-        except Exception as e:
-            logger.error(f"Error loading Whisper model: {e}")
-            raise
+            except Exception as e:
+                logger.error(f"Error loading Whisper model: {e}")
+                raise
+        return cls._model
+
+    @classmethod
+    def cleanup(cls):
+        if cls._model is not None:
+            try:
+                del cls._model
+                cls._model = None
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception as e:
+                logger.error(f"Error cleaning up Whisper model: {e}")
 
 def cleanup_temp(temp_dir):
     """Очистка временных файлов"""
@@ -98,6 +110,10 @@ def cleanup_temp(temp_dir):
 class VideoProcessor:
     def __init__(self, config):
         self.config = config
+        self.temp_dir = Path(config['temp_dir'])
+        self.output_dir = Path(config['output_dir'])
+        self.temp_dir.mkdir(exist_ok=True)
+        self.output_dir.mkdir(exist_ok=True)
         self.logger = logging.getLogger(__name__)
         self.audio_extractor = AudioExtractor()
         self.output_generator = OutputGenerator()
@@ -106,28 +122,54 @@ class VideoProcessor:
         self.whisper_model = whisper.load_model("tiny")
 
     def process_video(self, video_path):
+        temp_files = []
         try:
-            # Извлекаем аудио в низком качестве
+            # Проверка места на диске
+            self._check_disk_space(video_path)
+
+            # Извлечение аудио
             audio_path = self._extract_audio(video_path)
-            
-            # Получаем текст через tiny модель Whisper
-            text = self._transcribe_audio(audio_path)
-            
-            # Извлекаем ключевые кадры с оптимизацией
+            temp_files.append(audio_path)
+
+            # Транскрибация
+            segments = self._transcribe_audio(audio_path)
+
+            # Обработка кадров
             frames = self._extract_frames(video_path)
-            
-            # Генерируем PDF
-            pdf_path = self._generate_pdf(text, frames)
-            
-            # Очищаем временные файлы
-            self._cleanup([video_path, audio_path])
-            
+
+            # Генерация PDF
+            pdf_path = self._generate_pdf(segments, frames)
+
             return pdf_path
-            
+
         except Exception as e:
-            self.logger.error(f"Error processing video: {e}")
-            self._cleanup([video_path, audio_path])
+            logger.error(f"Error processing video: {e}")
             raise
+        finally:
+            self._cleanup_temp_files(temp_files)
+
+    def _check_disk_space(self, video_path):
+        try:
+            video_size = os.path.getsize(video_path)
+            required_space = video_size * 3  # 3x размер видео
+            
+            free_space = shutil.disk_usage(self.temp_dir).free
+            if free_space < required_space:
+                raise RuntimeError(
+                    f"Insufficient disk space. Required: {required_space/1024/1024:.1f}MB, "
+                    f"Available: {free_space/1024/1024:.1f}MB"
+                )
+        except Exception as e:
+            logger.error(f"Error checking disk space: {e}")
+            raise
+
+    def _cleanup_temp_files(self, temp_files):
+        for file_path in temp_files:
+            try:
+                if file_path and os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception as e:
+                logger.error(f"Error removing temp file {file_path}: {e}")
 
     def _extract_audio(self, video_path):
         """Извлечение аудио из видео в низком качестве"""
@@ -148,7 +190,7 @@ class VideoProcessor:
                 audio_path,
                 language='ru'
             )
-            return result['text']
+            return result['segments']
         except Exception as e:
             self.logger.error(f"Error transcribing audio: {e}")
             raise
@@ -186,22 +228,14 @@ class VideoProcessor:
             self.logger.error(f"Error extracting frames: {e}")
             raise
 
-    def _generate_pdf(self, text, frames):
+    def _generate_pdf(self, segments, frames):
         """Генерация PDF с текстом и кадрами"""
         try:
+            text = ' '.join([segment['text'] for segment in segments])
             return self.output_generator.generate(text, frames)
         except Exception as e:
             self.logger.error(f"Error generating PDF: {e}")
             raise
-
-    def _cleanup(self, files):
-        """Очистка временных файлов"""
-        for file in files:
-            try:
-                if file and os.path.exists(file):
-                    os.remove(file)
-            except Exception as e:
-                self.logger.error(f"Error cleaning up {file}: {e}")
 
 def extract_audio(video_path, config):
     """Извлечение аудио из видео"""

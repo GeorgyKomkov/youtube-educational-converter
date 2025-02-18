@@ -6,233 +6,141 @@ from PIL import Image
 import torch
 from transformers import pipeline
 import time
-import shutil
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 import yaml
+from pathlib import Path
 
 class FrameProcessor:
     def __init__(self, output_dir, max_frames=20, mode='scenes', 
                  blip_enabled=True, max_caption_length=50):
-        self.output_dir = output_dir
+        self.output_dir = Path(output_dir)
         self.max_frames = max_frames
         self.mode = mode
         self.blip_enabled = blip_enabled
         self.max_caption_length = max_caption_length
         self.logger = logging.getLogger(__name__)
         self.config = self._load_config()
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
         # Создание директорий
-        self.screenshots_dir = os.path.join(output_dir, 'screenshots')
-        os.makedirs(self.screenshots_dir, exist_ok=True)
+        self.screenshots_dir = self.output_dir / 'screenshots'
+        self.screenshots_dir.mkdir(exist_ok=True)
         
         # Инициализация моделей
         self._initialize_models()
-        
-        # Очистка старых файлов при запуске
-        self._cleanup_old_files()
 
     def _load_config(self):
         """Загрузка конфигурации"""
         try:
-            with open('config/config.yaml', 'r') as f:
+            config_path = Path('config/config.yaml')
+            if not config_path.exists():
+                raise FileNotFoundError("Config file not found")
+                
+            with open(config_path, 'r') as f:
                 config = yaml.safe_load(f)
-            return config.get('video_processing', {
-                'max_frames': 20,
-                'frame_mode': 'interval',
-                'frame_interval': 60,
-                'max_resolution': '720p'
-            })
+            return config.get('video_processing', {})
         except Exception as e:
             self.logger.error(f"Error loading config: {e}")
-            return {
-                'max_frames': 20,
-                'frame_mode': 'interval',
-                'frame_interval': 60,
-                'max_resolution': '720p'
-            }
+            return {}
 
     def _initialize_models(self):
         """Инициализация ML моделей"""
         try:
-            # Определение устройства
-            if torch.cuda.is_available() and not os.environ.get('DISABLE_CUDA'):
-                self.device = "cuda"
-                gpu_memory = torch.cuda.get_device_properties(0).total_memory
-                if gpu_memory < 4 * 1024 * 1024 * 1024:  # Меньше 4GB
-                    self.logger.warning("Low GPU memory, switching to CPU")
-                    self.device = "cpu"
-            else:
-                self.device = "cpu"
-
-            # Инициализация BLIP если включено
             if self.blip_enabled:
                 self.caption_model = pipeline(
-                    "image-to-text",
+                    "image-to-text", 
                     model="Salesforce/blip-image-captioning-base",
                     device=self.device
                 )
-
-            # Инициализация модели для эмбеддингов
-            self.embedding_model = SentenceTransformer('clip-ViT-B-32', device=self.device)
+            
+            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            self.embedding_model.to(self.device)
             
         except Exception as e:
             self.logger.error(f"Error initializing models: {e}")
             raise
 
-    def _cleanup_old_files(self):
-        """Очистка старых временных файлов"""
-        try:
-            for file in os.listdir(self.screenshots_dir):
-                file_path = os.path.join(self.screenshots_dir, file)
-                if os.path.getctime(file_path) < (time.time() - 86400):  # Старше 24 часов
-                    os.remove(file_path)
-        except Exception as e:
-            self.logger.error(f"Error cleaning old files: {e}")
-
     def process(self, video_path):
         """Обработка видео и извлечение кадров"""
+        frames = []
+        cap = None
         try:
-            if not os.path.exists(video_path):
-                raise FileNotFoundError(f"Video file not found: {video_path}")
-
-            # Открытие видео
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
-                raise RuntimeError("Failed to open video file")
+                raise RuntimeError("Error opening video file")
 
-            frames = []
-            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            fps = int(cap.get(cv2.CAP_PROP_FPS))
-            duration = frame_count / fps
-
-            # Определение интервала между кадрами
-            interval = self._calculate_interval(duration)
-
-            current_time = 0
-            while current_time < duration:
-                cap.set(cv2.CAP_PROP_POS_MSEC, current_time * 1000)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            
+            frame_indices = self._get_frame_indices(total_frames, fps)
+            
+            for frame_idx in frame_indices:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
                 ret, frame = cap.read()
                 
                 if not ret:
-                    break
+                    continue
+                    
+                try:
+                    processed_frame = self._process_frame(frame, frame_idx)
+                    if processed_frame:
+                        frames.append(processed_frame)
+                except Exception as e:
+                    self.logger.error(f"Error processing frame {frame_idx}: {e}")
+                    continue
 
-                # Обработка кадра
-                processed_frame = self._process_frame(frame, current_time)
-                if processed_frame:
-                    frames.append(processed_frame)
-
-                current_time += interval
-
-            cap.release()
-
-            # Выбор наиболее релевантных кадров
             return self._select_most_relevant_frames(frames)
-
+            
         except Exception as e:
             self.logger.error(f"Error processing video: {e}")
             raise
         finally:
-            if 'cap' in locals():
+            if cap is not None:
                 cap.release()
 
-    def _calculate_interval(self, duration):
-        """Расчет интервала между кадрами"""
-        return max(1, duration / (self.max_frames * 2))
-
-    def _process_frame(self, frame, timestamp):
+    def _process_frame(self, frame, frame_idx):
         """Обработка отдельного кадра"""
         try:
-            # Сохранение кадра
-            frame_path = os.path.join(self.screenshots_dir, f"frame_{timestamp:.1f}.jpg")
-            
-            # Конвертация BGR в RGB и сохранение через PIL
+            # Конвертация BGR в RGB
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             image = Image.fromarray(frame_rgb)
             
-            # Изменение размера если нужно
-            max_size = (1280, 720)  # 720p
-            if image.size[0] > max_size[0] or image.size[1] > max_size[1]:
-                image.thumbnail(max_size, Image.Resampling.LANCZOS)
+            # Сохранение кадра
+            output_path = self.screenshots_dir / f"frame_{frame_idx}.jpg"
+            image.save(output_path, quality=85)
             
-            # Сохранение с оптимизацией
-            image.save(frame_path, 'JPEG', quality=85, optimize=True)
-            
-            # Получение описания если включено BLIP
-            description = ""
+            # Генерация описания если включено
+            caption = ""
             if self.blip_enabled:
-                description = self._generate_caption(image)
+                caption = self._generate_caption(image)
             
             # Получение эмбеддинга
-            embedding = self._get_embedding(image)
+            embedding = self._get_embedding(caption if caption else "")
             
             return {
-                'path': frame_path,
-                'time': timestamp,
-                'description': description,
+                'path': str(output_path),
+                'index': frame_idx,
+                'caption': caption,
                 'embedding': embedding
             }
             
         except Exception as e:
-            self.logger.error(f"Error processing frame at {timestamp}: {e}")
+            self.logger.error(f"Error processing frame: {e}")
             return None
-
-    def _generate_caption(self, image):
-        """Генерация описания кадра"""
-        try:
-            if not self.blip_enabled:
-                return ""
-                
-            captions = self.caption_model(image)
-            if captions and len(captions) > 0:
-                caption = captions[0]['generated_text']
-                return caption[:self.max_caption_length]
-            return ""
-        except Exception as e:
-            self.logger.error(f"Error generating caption: {e}")
-            return ""
-
-    def _get_embedding(self, image):
-        """Получение эмбеддинга для кадра"""
-        try:
-            embedding = self.embedding_model.encode(
-                image, 
-                convert_to_tensor=True,
-                show_progress_bar=False
-            )
-            return embedding.cpu().numpy()
-        except Exception as e:
-            self.logger.error(f"Error getting embedding: {e}")
-            return np.zeros(512)
-
-    def _select_most_relevant_frames(self, frames):
-        """Выбор наиболее релевантных кадров"""
-        try:
-            if len(frames) <= self.max_frames:
-                return frames
-            
-            embeddings = np.array([frame['embedding'] for frame in frames])
-            similarity_matrix = cosine_similarity(embeddings)
-            
-            selected_indices = [0]
-            while len(selected_indices) < self.max_frames:
-                max_similarities = np.max(similarity_matrix[selected_indices][:, :], axis=0)
-                remaining_indices = list(set(range(len(frames))) - set(selected_indices))
-                next_frame_idx = remaining_indices[np.argmin(max_similarities[remaining_indices])]
-                selected_indices.append(next_frame_idx)
-            
-            selected_indices.sort()
-            return [frames[i] for i in selected_indices]
-            
-        except Exception as e:
-            self.logger.error(f"Error selecting frames: {e}")
-            return frames[:self.max_frames]
 
     def cleanup(self):
         """Очистка ресурсов"""
         try:
-            # Очистка CUDA кэша если использовался GPU
-            if self.device == "cuda":
+            if hasattr(self, 'caption_model'):
+                del self.caption_model
+            if hasattr(self, 'embedding_model'):
+                del self.embedding_model
+            if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")
+
+    def __del__(self):
+        """Деструктор для очистки ресурсов"""
+        self.cleanup()

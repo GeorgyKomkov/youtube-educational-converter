@@ -8,20 +8,25 @@ from sentence_transformers import SentenceTransformer
 import shutil
 import subprocess
 from PIL import Image
+from pathlib import Path
 
 class OutputGenerator:
     def __init__(self, output_dir):
-        self.output_dir = output_dir
+        self.output_dir = Path(output_dir)
         self.logger = logging.getLogger(__name__)
         self.text_model = SentenceTransformer('all-MiniLM-L6-v2')
         self.config = self._load_config()
         self._check_dependencies()
-        os.makedirs(output_dir, exist_ok=True)
+        self.output_dir.mkdir(exist_ok=True)
 
     def _load_config(self):
         """Загрузка конфигурации"""
         try:
-            with open('config/config.yaml', 'r') as f:
+            config_path = Path('config/config.yaml')
+            if not config_path.exists():
+                raise FileNotFoundError("Config file not found")
+                
+            with open(config_path, 'r') as f:
                 import yaml
                 return yaml.safe_load(f)
         except Exception as e:
@@ -39,94 +44,62 @@ class OutputGenerator:
         if not shutil.which('wkhtmltopdf'):
             raise RuntimeError("wkhtmltopdf not installed")
             
-        try:
-            import PIL
-            import markdown2
-            import pdfkit
-        except ImportError as e:
-            raise RuntimeError(f"Required package not installed: {e}")
+        if not shutil.which('gs'):
+            raise RuntimeError("ghostscript not installed")
 
-    def generate(self, data):
-        """Создание выходных файлов"""
+    def generate_output(self, transcription, frames, video_title):
+        """Генерация выходного PDF файла"""
         try:
-            # Проверка входных данных
-            if not all(key in data for key in ['title', 'segments', 'frames']):
-                raise ValueError("Missing required data fields")
-
-            # Подготовка контента
-            content = self._prepare_content(data)
+            # Создание временного MD файла
+            md_content = self._generate_markdown(transcription, frames, video_title)
             
-            # Генерация файлов
-            md_path = self._generate_markdown(content)
+            # Проверка места на диске
+            self._check_disk_space(len(md_content))
+            
+            # Сохранение MD
+            md_path = self.output_dir / f"{video_title}.md"
+            with open(md_path, 'w', encoding='utf-8') as f:
+                f.write(md_content)
+            
+            # Конвертация в PDF
             pdf_path = self._generate_pdf(md_path)
             
-            # Проверка размера PDF
+            # Сжатие PDF если нужно
             if os.path.getsize(pdf_path) > self.config['pdf']['max_size'] * 1024 * 1024:
                 pdf_path = self._compress_pdf(pdf_path)
             
-            return {
-                'markdown': md_path,
-                'pdf': pdf_path
-            }
+            return pdf_path
             
         except Exception as e:
             self.logger.error(f"Error generating output: {e}")
             raise
-
-    def _prepare_content(self, data):
-        """Подготовка контента"""
+            
+    def _check_disk_space(self, content_size):
+        """Проверка свободного места"""
         try:
-            text_embeddings = self.text_model.encode([s['text'] for s in data['segments']])
-            frame_embeddings = [f['embedding'] for f in data['frames']]
+            # Оценка требуемого места (3x размер контента)
+            required_space = content_size * 3
+            free_space = shutil.disk_usage(self.output_dir).free
             
-            similarity_matrix = cosine_similarity(text_embeddings, frame_embeddings)
-            
-            sections = []
-            for i, segment in enumerate(data['segments']):
-                best_frame_idx = np.argmax(similarity_matrix[i])
-                best_frame = data['frames'][best_frame_idx]
-                
-                sections.append({
-                    'text': segment['text'],
-                    'time': segment['start'],
-                    'frame': best_frame
-                })
-            
-            return {
-                'title': data['title'],
-                'sections': sections
-            }
+            if free_space < required_space:
+                raise RuntimeError(
+                    f"Insufficient disk space. Required: {required_space/1024/1024:.1f}MB, "
+                    f"Available: {free_space/1024/1024:.1f}MB"
+                )
         except Exception as e:
-            self.logger.error(f"Error preparing content: {e}")
-            raise
-
-    def _generate_markdown(self, content):
-        """Создание Markdown файла"""
-        try:
-            output_path = os.path.join(self.output_dir, f"{content['title']}.md")
-            
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(f"# {content['title']}\n\n")
-                for section in content['sections']:
-                    f.write(f"## Time: {section['time']:.1f} sec\n")
-                    f.write(f"![{section['frame']['description']}]({section['frame']['path']})\n")
-                    f.write(f"{section['text']}\n\n")
-            
-            return output_path
-        except Exception as e:
-            self.logger.error(f"Error generating markdown: {e}")
+            self.logger.error(f"Error checking disk space: {e}")
             raise
 
     def _generate_pdf(self, md_path):
-        """Конвертация в PDF"""
+        """Генерация PDF из Markdown"""
         try:
             options = {
+                'encoding': 'UTF-8',
                 'page-size': 'A4',
                 'margin-top': '20mm',
                 'margin-right': '20mm',
                 'margin-bottom': '20mm',
                 'margin-left': '20mm',
-                'encoding': 'UTF-8',
                 'image-quality': 85,
                 'image-dpi': 150
             }
@@ -134,36 +107,50 @@ class OutputGenerator:
             with open(md_path, 'r', encoding='utf-8') as f:
                 html = markdown2.markdown(f.read())
                 
-            pdf_path = md_path.replace('.md', '.pdf')
-            pdfkit.from_string(html, pdf_path, options=options)
+            pdf_path = md_path.with_suffix('.pdf')
+            pdfkit.from_string(html, str(pdf_path), options=options)
             
             return pdf_path
         except Exception as e:
             self.logger.error(f"Error generating PDF: {e}")
             raise
         finally:
-            if os.path.exists(md_path):
-                os.remove(md_path)
+            try:
+                md_path.unlink()
+            except Exception as e:
+                self.logger.warning(f"Failed to remove temporary MD file: {e}")
 
     def _compress_pdf(self, pdf_path):
         """Сжатие PDF файла"""
         try:
-            compressed_path = pdf_path.replace('.pdf', '_compressed.pdf')
+            compressed_path = pdf_path.with_name(f"{pdf_path.stem}_compressed.pdf")
             
             # Используем Ghostscript для сжатия
             cmd = [
                 'gs', '-sDEVICE=pdfwrite', '-dCompatibilityLevel=1.4',
                 '-dPDFSETTINGS=/ebook', '-dNOPAUSE', '-dQUIET', '-dBATCH',
-                f'-sOutputFile={compressed_path}', pdf_path
+                f'-sOutputFile={compressed_path}', str(pdf_path)
             ]
             
-            subprocess.run(cmd, check=True)
+            subprocess.run(cmd, check=True, capture_output=True)
             
-            if os.path.exists(compressed_path):
-                os.remove(pdf_path)
-                os.rename(compressed_path, pdf_path)
+            if compressed_path.exists():
+                pdf_path.unlink()
+                compressed_path.rename(pdf_path)
             
             return pdf_path
         except Exception as e:
             self.logger.error(f"Error compressing PDF: {e}")
             return pdf_path
+
+    def cleanup(self):
+        """Очистка ресурсов"""
+        try:
+            if hasattr(self, 'text_model'):
+                del self.text_model
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {e}")
+
+    def __del__(self):
+        """Деструктор"""
+        self.cleanup()

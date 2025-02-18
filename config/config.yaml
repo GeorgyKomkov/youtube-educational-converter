@@ -20,9 +20,11 @@ transcription:
 
 video_processing:
   max_frames: 20
-  frame_mode: 'interval'  # interval, scenes
+  frame_mode: 'scenes'
   frame_interval: 60  # seconds
-  max_resolution: '720p'
+  max_resolution: 720
+  frame_quality: 85
+  thumbnail_size: [320, 180]
 
 blip:
   enabled: false  # Отключаем генерацию описаний кадров через BLIP
@@ -67,13 +69,16 @@ storage:
   video_max_size: 500  # MB
   cleanup_interval: 3600  # seconds
   temp_file_ttl: 86400  # seconds (24 hours)
-  max_file_age: 86400  # seconds (24 hours)
+  max_file_age: 3600  # 1 час
   temp_dir: "/app/temp"
   output_dir: "/app/output"
   video_dir: "/app/videos"
   cache_dir: "/app/cache"
   temp_lifetime: 3600  # Время жизни временных файлов (1 час)
   cache_size_mb: 1000  # Ограничение кэша в 1GB
+  emergency_cleanup_threshold: 85  # процент заполнения
+  max_video_size_mb: 500
+  max_temp_size_gb: 2
 
 pdf:
   template: 'default'
@@ -100,6 +105,8 @@ monitoring:
     request_timeout: 30
     slow_request_threshold: 10
     error_threshold: 50
+  metrics_interval: 15
+  log_level: 'INFO'
 
 video:
   max_resolution: 480  # Ограничиваем качество видео
@@ -107,8 +114,10 @@ video:
   cleanup_delay: 300  # Удаление через 5 минут после создания PDF
 
 whisper:
-  model: "tiny"
-  device: "cpu"
+  model: 'tiny'
+  device: 'cpu'
+  batch_size: 16
+  compute_type: 'int8'
 
 cleanup:
   temp_lifetime: 3600

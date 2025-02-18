@@ -9,7 +9,9 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     wkhtmltopdf \
     ghostscript \
-    && rm -rf /var/lib/apt/lists/*
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Копируем только requirements.txt
 COPY requirements.txt .
@@ -22,6 +24,7 @@ COPY src/ src/
 COPY config/ config/
 COPY static/ static/
 COPY templates/ templates/
+COPY start.sh .
 
 # Создаём директории и устанавливаем права
 RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models /app/logs && \
@@ -31,11 +34,15 @@ RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models /app/logs && \
 # Переменные окружения
 ENV PYTHONPATH=/app \
     FLASK_APP=src.server \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive
 
-EXPOSE 8080
-
+# Проверка здоровья
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "src.server:app"]
+# Открываем порт
+EXPOSE 8080
+
+# Запускаем приложение через скрипт
+CMD ["/bin/bash", "/app/start.sh"]

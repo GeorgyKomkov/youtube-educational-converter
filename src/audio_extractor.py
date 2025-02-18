@@ -14,8 +14,8 @@ class AudioExtractor:
         Args:
             temp_dir (str): Путь к временной директории
         """
-        self.temp_dir = temp_dir
-        os.makedirs(temp_dir, exist_ok=True)
+        self.temp_dir = Path(temp_dir)
+        self.temp_dir.mkdir(exist_ok=True)
         self._check_ffmpeg()
         
     def _check_ffmpeg(self):
@@ -34,7 +34,7 @@ class AudioExtractor:
             raise RuntimeError("FFmpeg is not available")
         except Exception as e:
             logger.error(f"Error checking FFmpeg: {e}")
-            raise RuntimeError("FFmpeg check failed")
+            raise
         
     def extract(self, video_path):
         """
@@ -45,40 +45,36 @@ class AudioExtractor:
             
         Returns:
             str: Путь к извлеченному аудио файлу
-            
-        Raises:
-            FileNotFoundError: Если видео файл не найден
-            RuntimeError: Если не удалось извлечь аудио
         """
         try:
-            if not os.path.exists(video_path):
+            video_path = Path(video_path)
+            if not video_path.exists():
                 raise FileNotFoundError(f"Video file not found: {video_path}")
                 
-            # Создаем уникальное имя для аудио файла
-            video_name = Path(video_path).stem
-            audio_path = os.path.join(self.temp_dir, f'{video_name}_audio.wav')
-            
-            # Проверяем достаточно ли места на диске
+            # Проверка места на диске
             self._check_disk_space(video_path)
             
-            # Настройки FFmpeg для качественного аудио
+            # Генерация имени выходного файла
+            audio_path = self.temp_dir / f"{video_path.stem}.wav"
+            
+            # Формирование команды ffmpeg
             command = [
                 'ffmpeg',
-                '-i', video_path,
-                '-vn',                # Отключаем видео
-                '-acodec', 'pcm_s16le', # Кодек для WAV
-                '-ar', '44100',      # Частота дискретизации
-                '-ac', '2',          # Количество каналов
-                '-y',                # Перезаписывать существующие файлы
-                audio_path
+                '-i', str(video_path),
+                '-vn',  # Отключаем видео
+                '-acodec', 'pcm_s16le',  # 16-bit PCM
+                '-ar', '16000',  # Частота дискретизации
+                '-ac', '1',  # Моно
+                '-y',  # Перезаписывать существующие файлы
+                str(audio_path)
             ]
             
-            logger.info(f"Extracting audio from {video_path}")
+            # Запуск ffmpeg
             process = subprocess.run(
                 command,
                 capture_output=True,
                 text=True,
-                check=False  # Не вызывать исключение автоматически
+                check=False
             )
             
             if process.returncode != 0:
@@ -86,11 +82,11 @@ class AudioExtractor:
                 logger.error(f"FFmpeg failed: {error_msg}")
                 raise RuntimeError(f"Failed to extract audio: {error_msg}")
                 
-            if not os.path.exists(audio_path):
+            if not audio_path.exists():
                 raise RuntimeError("Audio file was not created")
                 
             logger.info(f"Audio extracted successfully to {audio_path}")
-            return audio_path
+            return str(audio_path)
             
         except Exception as e:
             logger.error(f"Error in audio extraction: {str(e)}")
@@ -120,9 +116,9 @@ class AudioExtractor:
         try:
             for file in os.listdir(self.temp_dir):
                 if file.endswith('.wav'):
-                    file_path = os.path.join(self.temp_dir, file)
+                    file_path = self.temp_dir / file
                     try:
-                        os.remove(file_path)
+                        file_path.unlink()
                         logger.info(f"Removed temporary file: {file_path}")
                     except Exception as e:
                         logger.warning(f"Failed to remove temporary file {file_path}: {e}")
