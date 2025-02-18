@@ -3,105 +3,85 @@ name: Deploy to Production
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:  # Добавляем возможность ручного запуска
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production
     
     env:
       DOCKER_COMPOSE_VERSION: v2.24.5
-    
+      DEPLOY_PATH: /root/youtube-converter
+      
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
-      - name: Cache Docker Compose
-        uses: actions/cache@v3
-        with:
-          path: /usr/local/bin/docker-compose
-          key: ${{ runner.os }}-docker-compose-${{ env.DOCKER_COMPOSE_VERSION }}
       
-      - name: Install SSH key
-        uses: shimataro/ssh-key-action@v2
+      - name: Setup environment variables
+        run: |
+          {
+            echo "SSH_HOST=${{ secrets.SSH_HOST }}"
+            echo "SSH_USER=${{ secrets.SSH_USER }}"
+            echo "SSH_KEY=${{ secrets.SSH_PRIVATE_KEY }}"
+            echo "SSH_KNOWN_HOSTS=${{ secrets.SSH_HOST_KEY }}"
+            echo "YOUTUBE_ID=${{ secrets.YOUTUBE_CLIENT_ID }}"
+            echo "YOUTUBE_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }}"
+            echo "YOUTUBE_KEY=${{ secrets.YOUTUBE_API_KEY }}"
+          } >> $GITHUB_ENV
+      
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          key: ${{ secrets.SSH_PRIVATE_KEY }}  # Приватный SSH ключ
-          name: id_ed25519
-          known_hosts: ${{ secrets.SSH_HOST }}  # Хост сервера
-          
+          ssh-private-key: ${{ env.SSH_KEY }}
+      
       - name: Add known hosts
-        run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
       
       - name: Install Docker Compose
         run: |
           if [ ! -f /usr/local/bin/docker-compose ]; then
-            # Скачиваем Docker Compose с проверкой хеша
-            DOCKER_COMPOSE_URL="https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)"
-            curl -L "${DOCKER_COMPOSE_URL}" -o docker-compose
-            chmod +x docker-compose
-            sudo mv docker-compose /usr/local/bin/
+            sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
           fi
-          docker-compose --version
       
-      - name: Deploy to server
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}     # Хост сервера
-          SSH_USER: ${{ secrets.SSH_USER }}     # Пользователь для SSH
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      - name: Create env file
         run: |
-          # Создаем директории если их нет
-          ssh $SSH_USER@$SSH_HOST "mkdir -p /root/youtube-converter/{videos,output,temp,cache/models,logs,static/{css,js}}"
+          cat > .env << EOF
+          YOUTUBE_CLIENT_ID=$YOUTUBE_ID
+          YOUTUBE_CLIENT_SECRET=$YOUTUBE_SECRET
+          YOUTUBE_API_KEY=$YOUTUBE_KEY
+          EOF
+      
+      - name: Deploy
+        run: |
+          # Создание директорий
+          ssh $SSH_USER@$SSH_HOST "mkdir -p ${DEPLOY_PATH}/{videos,output,temp,cache/models,logs,static/{css,js}}"
           
-          # Копируем файлы на сервер
-          scp -r * $SSH_USER@$SSH_HOST:/root/youtube-converter/
+          # Копирование файлов
+          scp -r ./* $SSH_USER@$SSH_HOST:${DEPLOY_PATH}/
+          scp .env $SSH_USER@$SSH_HOST:${DEPLOY_PATH}/
           
-          # Копируем статические файлы
-          scp static/css/styles.css $SSH_USER@$SSH_HOST:/root/youtube-converter/static/css/
-          scp static/js/main.js $SSH_USER@$SSH_HOST:/root/youtube-converter/static/js/
-          
-          # Создаем .env файл с секретами
-          ssh $SSH_USER@$SSH_HOST "cat > /root/youtube-converter/.env << EOF
-          YOUTUBE_CLIENT_ID=${YOUTUBE_CLIENT_ID}
-          YOUTUBE_CLIENT_SECRET=${YOUTUBE_CLIENT_SECRET}
-          YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
-          EOF"
-          
-          # Устанавливаем права
-          ssh $SSH_USER@$SSH_HOST "cd /root/youtube-converter && \
+          # Установка прав и запуск
+          ssh $SSH_USER@$SSH_HOST "cd ${DEPLOY_PATH} && \
             chmod -R 777 videos output temp cache logs && \
-            chmod 600 .env"
-          
-          # Перезапускаем сервисы
-          ssh $SSH_USER@$SSH_HOST "cd /root/youtube-converter && \
+            chmod 600 .env && \
             docker-compose down && \
             docker-compose pull && \
             docker-compose build --no-cache && \
             docker-compose up -d && \
             systemctl daemon-reload && \
             systemctl restart youtube-converter"
-          
-          # Проверяем статус
-          ssh $SSH_USER@$SSH_HOST "cd /root/youtube-converter && \
-            docker-compose ps && \
-            docker-compose logs --tail=20"
 
-      - name: Verify Deployment
+      - name: Verify
         run: |
-          # Ждем 30 секунд для запуска сервисов
           sleep 30
-          
-          # Проверяем доступность сервиса
-          curl -f "http://${{ secrets.SSH_HOST }}:8080/health" || exit 1
+          curl -f "http://$SSH_HOST:8080/health" || exit 1
         
-      - name: Cleanup old images
-        if: always()  # Выполняем даже при ошибках
+      - name: Cleanup
+        if: always()
         run: |
           ssh $SSH_USER@$SSH_HOST "docker system prune -af --volumes"
-
-      - name: Notify on failure
-        if: failure()
-        run: |
-          echo "Deployment failed!"
-          # Здесь можно добавить отправку уведомлений (например, в Slack или по email)
