@@ -47,7 +47,6 @@ services:
           memory: 2G
     ports:
       - "8080:8080"
-      - "9090:9090"
 
   worker:
     build: .

@@ -8,11 +8,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
@@ -21,61 +19,25 @@ jobs:
           name: id_ed25519
           known_hosts: ${{ secrets.SSH_HOST }}
           
-      - name: Add known hosts
-        run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
-
       - name: Deploy to server
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           DEPLOY_PATH: /root/youtube-converter
         run: |
-          # Создание директорий
-          ssh $SSH_USER@$SSH_HOST "mkdir -p $DEPLOY_PATH/{videos,output,temp,cache/models,logs,static/{css,js}}"
+          # Проверяем и освобождаем порты если нужно
+          ssh $SSH_USER@$SSH_HOST "sudo lsof -t -i:8080 | xargs -r kill -9"
+          ssh $SSH_USER@$SSH_HOST "sudo lsof -t -i:9090 | xargs -r kill -9"
           
-          # Копирование файлов
+          ssh $SSH_USER@$SSH_HOST "mkdir -p $DEPLOY_PATH/{videos,output,temp,cache/models,logs}"
           scp -r ./* $SSH_USER@$SSH_HOST:$DEPLOY_PATH/
-          
-          # Установка прав на start.sh
-          ssh $SSH_USER@$SSH_HOST "chmod +x $DEPLOY_PATH/start.sh"
-          
-          # Создание client_secrets.json
-          ssh $SSH_USER@$SSH_HOST "cat > $DEPLOY_PATH/client_secrets.json << 'EOF'
-          {
-            \"web\": {
-              \"client_id\": \"${{ secrets.YOUTUBE_CLIENT_ID }}\",
-              \"project_id\": \"youtube-educational-converter\",
-              \"auth_uri\": \"https://accounts.google.com/o/oauth2/auth\",
-              \"token_uri\": \"https://oauth2.googleapis.com/token\",
-              \"auth_provider_x509_cert_url\": \"https://www.googleapis.com/oauth2/v1/certs\",
-              \"client_secret\": \"${{ secrets.YOUTUBE_CLIENT_SECRET }}\",
-              \"redirect_uris\": [
-                \"http://localhost:8080/oauth2callback\",
-                \"http://${{ secrets.SSH_HOST }}:8080/oauth2callback\"
-              ]
-            }
-          }
-          EOF"
-          
-          # Создание .env файла
-          ssh $SSH_USER@$SSH_HOST "cat > $DEPLOY_PATH/.env << EOF
-          YOUTUBE_CLIENT_ID=${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }}
-          EOF"
-          
-          # Установка прав и запуск
           ssh $SSH_USER@$SSH_HOST "cd $DEPLOY_PATH && \
             chmod -R 777 videos output temp cache logs && \
-            chmod 600 .env client_secrets.json && \
             docker-compose down --volumes && \
             docker system prune -af --volumes && \
-            docker-compose pull && \
             docker-compose up -d --build"
 
       - name: Health check
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
           sleep 30
-          curl -f "http://$SSH_HOST:8080/health" || exit 1
+          curl -f "http://${{ secrets.SSH_HOST }}:8080/health" || exit 1
