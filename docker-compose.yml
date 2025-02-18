@@ -45,6 +45,9 @@ services:
       resources:
         limits:
           memory: 2G
+    ports:
+      - "8080:8080"
+      - "9090:9090"
 
   worker:
     build: .
@@ -70,8 +73,38 @@ services:
         limits:
           memory: 4G
 
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    depends_on:
+      - server
+      - worker
+
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   redis_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   default:

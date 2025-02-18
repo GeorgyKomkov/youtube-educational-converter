@@ -84,6 +84,8 @@ processing:
 
 monitoring:
   enabled: true
-  log_level: "INFO"
-  metrics_port: 9090
-  alert_threshold: 90  # percent
+  prometheus_port: 9090
+  metrics:
+    request_timeout: 30
+    slow_request_threshold: 10
+    error_threshold: 50

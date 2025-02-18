@@ -49,7 +49,10 @@ jobs:
               \"token_uri\": \"https://oauth2.googleapis.com/token\",
               \"auth_provider_x509_cert_url\": \"https://www.googleapis.com/oauth2/v1/certs\",
               \"client_secret\": \"${{ secrets.YOUTUBE_CLIENT_SECRET }}\",
-              \"redirect_uris\": [\"http://localhost:8080/oauth2callback\"]
+              \"redirect_uris\": [
+                \"http://localhost:8080/oauth2callback\",
+                \"http://${{ secrets.SSH_HOST }}:8080/oauth2callback\"
+              ]
             }
           }
           EOF"

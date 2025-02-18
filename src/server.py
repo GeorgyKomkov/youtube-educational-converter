@@ -3,7 +3,6 @@ from flask import (
     request, 
     jsonify, 
     session, 
-    url_for,
     render_template,
     send_from_directory
 )
@@ -18,6 +17,7 @@ import psutil
 import yaml
 import shutil
 from werkzeug.exceptions import NotFound
+from prometheus_client import start_http_server, Counter, Histogram
 
 # Импортируем нужные модули
 from src.youtube_api import YouTubeAPI
@@ -101,6 +101,10 @@ redis_client = redis.from_url(
 
 # Инициализация YouTube API
 youtube_api = YouTubeAPI()
+
+# Метрики
+REQUEST_COUNT = Counter('request_count', 'App Request Count', ['method', 'endpoint', 'status'])
+REQUEST_LATENCY = Histogram('request_latency_seconds', 'Request latency')
 
 @celery.task(bind=True)
 def process_video_task(self, video_url, user_cookies=None):
@@ -299,6 +303,20 @@ cleanup_thread.start()
 
 monitor_thread = threading.Thread(target=monitor_resources, daemon=True)
 monitor_thread.start()
+
+@app.before_request
+def before_request():
+    request.start_time = time.time()
+
+@app.after_request
+def after_request(response):
+    request_latency = time.time() - request.start_time
+    REQUEST_COUNT.labels(request.method, request.endpoint, response.status_code).inc()
+    REQUEST_LATENCY.observe(request_latency)
+    return response
+
+# Запуск сервера метрик Prometheus
+start_http_server(9090)
 
 if __name__ == "__main__":
     app.run(

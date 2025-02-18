@@ -14,7 +14,7 @@
   {
     "domain": ".youtube.com",
     "name": "VISITOR_INFO1_LIVE",
-    "value": "your_visitor_info_value",
+    "value": "actual_visitor_info_value",
     "path": "/",
     "secure": true
   },

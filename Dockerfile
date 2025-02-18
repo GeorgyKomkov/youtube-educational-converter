@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wkhtmltopdf \
     gcc \
     python3-dev \
+    git \
+    ghostscript \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

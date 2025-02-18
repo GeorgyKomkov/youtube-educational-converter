@@ -40,3 +40,10 @@ kombu>=5.3.5
 psutil==5.9.8
 numpy>=1.21.2
 
+prometheus-client>=0.19.0
+
+# ML зависимости
+openai-whisper>=20231117
+
+# Мониторинг
+grafana-api>=1.0.2
