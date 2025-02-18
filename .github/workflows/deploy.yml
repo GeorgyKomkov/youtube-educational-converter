@@ -6,12 +6,48 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+          
+      - name: Run tests
+        run: |
+          pytest --cov=src tests/
+          
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Verify secrets
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          YOUTUBE_CLIENT_SECRETS: ${{ secrets.YOUTUBE_CLIENT_SECRETS }}
+        run: |
+          for var in SSH_HOST SSH_USER SSH_PRIVATE_KEY YOUTUBE_API_KEY YOUTUBE_CLIENT_SECRETS; do
+            if [ -z "${!var}" ]; then
+              echo "Error: $var is not set"
+              exit 1
+            fi
+          done
+
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -19,38 +55,48 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            # Создание пользователя
+            id -u youtube-converter &>/dev/null || sudo useradd -m youtube-converter
+            
             # Подготовка директории
-            mkdir -p /root/youtube-converter
-            cd /root/youtube-converter
+            sudo mkdir -p /opt/youtube-converter
+            cd /opt/youtube-converter
+            
+            # Сохранение client_secrets.json если он существует
+            if [ -f "client_secrets.json" ]; then
+              cp client_secrets.json client_secrets.json.backup
+            fi
             
             # Очистка Docker
-            docker-compose down --volumes || true
-            docker system prune -af --volumes || true
-            
-            # Копирование новых файлов
-            rm -rf /root/youtube-converter/*
+            docker-compose down || true
+            docker system prune -af || true
             
             # Клонирование репозитория
             git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git .
             
-            # Создание credentials
-            echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
+            # Восстановление client_secrets.json
+            if [ -f "client_secrets.json.backup" ]; then
+              mv client_secrets.json.backup client_secrets.json
+            else
+              # Создаем новый если бэкапа нет
+              echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
+            fi
+            
+            # Создание api.txt
             echo '${{ secrets.YOUTUBE_API_KEY }}' > api.txt
             chmod 644 client_secrets.json api.txt
             
-            # Создание директорий с правами
+            # Создание директорий
             mkdir -p videos output temp cache/models logs
             chmod -R 777 videos output temp cache logs
             
             # Запуск приложения
-            docker-compose build --no-cache
-            docker-compose up -d
+            docker-compose up -d --build
             
             # Проверка статуса
             sleep 30
             docker-compose ps
-            docker-compose logs
-
+            
       - name: Health check
         run: |
           sleep 45

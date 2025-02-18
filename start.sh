@@ -5,7 +5,6 @@ set -e
 cleanup() {
     echo "Cleaning up..."
     rm -rf /tmp/* /var/tmp/*
-    docker system prune -af --volumes
 }
 
 # Регистрируем функцию очистки

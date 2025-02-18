@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     wkhtmltopdf \
     ghostscript \
+    curl \
+    bc \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем только requirements.txt
