@@ -55,25 +55,12 @@ jobs:
           df -h
 
       - name: Deploy to server
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-        run: |
-          # Очистка на сервере
-          ssh $SSH_USER@$SSH_HOST "docker system prune -af --volumes"
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           
-          # Проверка места
-          ssh $SSH_USER@$SSH_HOST "df -h"
-          
-          # Деплой
-          scp -r . $SSH_USER@$SSH_HOST:/app/
-          scp .env $SSH_USER@$SSH_HOST:/app/
-          
-          # Перезапуск с очисткой
-          ssh $SSH_USER@$SSH_HOST "cd /app && \
-            docker-compose down --volumes && \
-            docker-compose up -d --build"
-            
       - name: Verify deployment
         run: |
           sleep 30
@@ -84,3 +71,9 @@ jobs:
         run: |
           ssh $SSH_USER@$SSH_HOST "docker system prune -af --volumes"
           find /app/backup* -mtime +7 -delete
+
+      - name: Set correct permissions
+        run: |
+          sudo chown -R $USER:$USER /root/youtube-converter
+          sudo chmod -R 755 /root/youtube-converter
+          sudo chmod -R 777 /root/youtube-converter/{videos,output,temp,cache,logs}

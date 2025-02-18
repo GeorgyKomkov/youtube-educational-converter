@@ -1,28 +1,21 @@
 # Используем более легкий базовый образ
-FROM python:3.9-slim-bullseye
+FROM python:3.10-slim
 
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
 # Устанавливаем только необходимые системные зависимости
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+RUN apt-get update && apt-get install -y \
     ffmpeg \
     wkhtmltopdf \
-    gcc \
-    python3-dev \
-    git \
     ghostscript \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем только requirements.txt
 COPY requirements.txt .
 
 # Оптимизируем установку pip пакетов
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    rm -rf ~/.cache/pip/*
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Копируем остальные файлы
 COPY . .

@@ -12,32 +12,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install SSH key
-        uses: shimataro/ssh-key-action@v2
-        with:
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          name: id_ed25519
-          known_hosts: ${{ secrets.SSH_HOST }}
-          
       - name: Deploy to server
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          DEPLOY_PATH: /root/youtube-converter
-        run: |
-          # Проверяем и освобождаем порты если нужно
-          ssh $SSH_USER@$SSH_HOST "sudo lsof -t -i:8080 | xargs -r kill -9"
-          ssh $SSH_USER@$SSH_HOST "sudo lsof -t -i:9090 | xargs -r kill -9"
-          
-          ssh $SSH_USER@$SSH_HOST "mkdir -p $DEPLOY_PATH/{videos,output,temp,cache/models,logs}"
-          scp -r ./* $SSH_USER@$SSH_HOST:$DEPLOY_PATH/
-          ssh $SSH_USER@$SSH_HOST "cd $DEPLOY_PATH && \
-            chmod -R 777 videos output temp cache logs && \
-            docker-compose down --volumes && \
-            docker system prune -af --volumes && \
-            docker-compose up -d --build"
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Подготовка директории
+            mkdir -p /root/youtube-converter
+            cd /root/youtube-converter
+            
+            # Очистка Docker
+            docker-compose down --volumes || true
+            docker system prune -af --volumes || true
+            
+            # Копирование новых файлов
+            rm -rf /root/youtube-converter/*
+            
+            # Клонирование репозитория
+            git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git .
+            
+            # Создание credentials
+            echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
+            echo '${{ secrets.YOUTUBE_API_KEY }}' > api.txt
+            chmod 644 client_secrets.json api.txt
+            
+            # Создание директорий с правами
+            mkdir -p videos output temp cache/models logs
+            chmod -R 777 videos output temp cache logs
+            
+            # Запуск приложения
+            docker-compose build --no-cache
+            docker-compose up -d
+            
+            # Проверка статуса
+            sleep 30
+            docker-compose ps
+            docker-compose logs
 
       - name: Health check
         run: |
-          sleep 30
+          sleep 45
           curl -f "http://${{ secrets.SSH_HOST }}:8080/health" || exit 1

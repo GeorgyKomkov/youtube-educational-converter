@@ -3,9 +3,10 @@ version: '3.8'
 services:
   redis:
     image: redis:alpine
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
+    restart: always
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -32,7 +33,9 @@ services:
       - YOUTUBE_CLIENT_SECRET=${YOUTUBE_CLIENT_SECRET}
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
       - FLASK_APP=src.server
+      - FLASK_ENV=production
       - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
     depends_on:
       redis:
         condition: service_healthy
@@ -41,6 +44,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
     deploy:
       resources:
         limits:
@@ -60,6 +64,7 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
+      - PYTHONUNBUFFERED=1
     depends_on:
       - redis
     healthcheck:
@@ -83,7 +88,7 @@ services:
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
     ports:
-      - "9090:9090"
+      - "9091:9090"
     depends_on:
       - server
       - worker

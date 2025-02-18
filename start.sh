@@ -11,7 +11,7 @@ cleanup() {
 # Регистрируем функцию очистки
 trap cleanup EXIT
 
-# Создание необходимых директорий
+# Создание и настройка прав для всех необходимых директорий
 directories=(
     "/app/videos"
     "/app/output"
@@ -33,3 +33,8 @@ exec gunicorn \
     --timeout 120 \
     --log-level info \
     src.server:app
+
+# Файл должен быть исполняемым
+chmod +x start.sh
+
+trap 'cleanup; exit 0' SIGTERM

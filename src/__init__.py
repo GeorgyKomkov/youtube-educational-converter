@@ -70,3 +70,5 @@ except Exception as e:
     sys.exit(1)
 
 __version__ = '1.0.0'
+
+os.makedirs('/app/logs', exist_ok=True)

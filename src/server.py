@@ -18,6 +18,7 @@ import yaml
 import shutil
 from werkzeug.exceptions import NotFound
 from prometheus_client import start_http_server, Counter, Histogram
+import sys
 
 # Импортируем нужные модули
 from src.youtube_api import YouTubeAPI
@@ -70,11 +71,16 @@ app = Flask(__name__,
     static_folder='static',
     template_folder='templates'
 )
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY') or os.urandom(24)
 
-# Создание необходимых директорий
+# Добавить проверку существования директорий при старте
 for directory in [VIDEO_DIR, OUTPUT_DIR, TEMP_DIR]:
-    os.makedirs(directory, exist_ok=True)
+    try:
+        os.makedirs(directory, exist_ok=True)
+        os.chmod(directory, 0o777)
+    except Exception as e:
+        logger.error(f"Failed to create directory {directory}: {e}")
+        sys.exit(1)
 
 # Конфигурация Celery
 celery = Celery('youtube_converter')
