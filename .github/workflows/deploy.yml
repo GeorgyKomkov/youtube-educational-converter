@@ -34,50 +34,27 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Создание пользователя
-            id -u youtube-converter &>/dev/null || sudo useradd -m youtube-converter
-            
             # Подготовка директории
             sudo mkdir -p /opt/youtube-converter
             cd /opt/youtube-converter
             
-            # Сохранение важных файлов
-            if [ -f ".env" ]; then
-              cp .env .env.backup
-            fi
-            if [ -f "client_secrets.json" ]; then
-              cp client_secrets.json client_secrets.json.backup
-            fi
-            
-            # Очистка Docker
-            docker-compose down || true
-            docker system prune -af || true
+            # Очистка директории перед клонированием
+            sudo rm -rf * .[!.]*
             
             # Клонирование репозитория
             git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git .
             
-            # Восстановление файлов
-            if [ -f ".env.backup" ]; then
-              mv .env.backup .env
-            else
-              # Создание .env файла
-              cat > .env << EOF
-              YOUTUBE_API_KEY='${{ secrets.YOUTUBE_API_KEY }}'
-              FLASK_ENV=production
-              MAX_WORKERS=2
-              WHISPER_MODEL=tiny
-              EOF
-            fi
-            
-            if [ -f "client_secrets.json.backup" ]; then
-              mv client_secrets.json.backup client_secrets.json
-            else
-              echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
-            fi
+            # Создание .env файла
+            cat > .env << EOF
+            YOUTUBE_API_KEY='${{ secrets.YOUTUBE_API_KEY }}'
+            FLASK_ENV=production
+            MAX_WORKERS=2
+            WHISPER_MODEL=tiny
+            EOF
             
             # Создание директорий и установка прав
-            mkdir -p videos output temp cache/models logs
-            chmod -R 777 videos output temp cache logs
+            sudo mkdir -p videos output temp cache/models logs
+            sudo chmod -R 777 videos output temp cache logs
             
             # Запуск приложения
             docker-compose up -d --build
