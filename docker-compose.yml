@@ -3,12 +3,16 @@ version: '3.8'
 services:
   redis:
     image: redis:alpine
+    sysctls:
+      - vm.overcommit_memory=1
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     deploy:
       resources:
         limits:
           cpus: '0.1'
-          memory: 256M
+          memory: 128M
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -79,7 +83,9 @@ services:
         condition: service_healthy
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
     volumes:
       - ./prometheus:/etc/prometheus
       - prometheus_data:/prometheus
@@ -88,8 +94,11 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-    ports:
-      - "9091:9090"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 256M
     depends_on:
       - server
       - worker

@@ -15,7 +15,7 @@ apscheduler>=3.10.0
 # ML и обработка
 torch>=2.0.0
 transformers>=4.30.0
-sentence-transformers>=2.2.0
+sentence-transformers==2.2.2
 opencv-python-headless>=4.8.0
 pillow>=9.5.0
 numpy>=1.24.0
@@ -37,6 +37,8 @@ pydub==0.25.1
 ffmpeg-python==0.2.0
 grafana-api==1.0.2
 psutil==5.9.5
-sentence-transformers==2.2.2
 apscheduler==3.10.1
 --extra-index-url https://download.pytorch.org/whl/cpu
+
+# Фиксированные версии для исправления конфликтов
+huggingface-hub==0.19.4
