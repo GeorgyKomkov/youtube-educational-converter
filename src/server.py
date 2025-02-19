@@ -78,7 +78,7 @@ app = Flask(__name__,
     static_folder='static',
     template_folder='templates'
 )
-app.secret_key = os.environ.get('FLASK_SECRET_KEY') or os.urandom(24)
+app.secret_key = app.config.get('server', {}).get('secret_key') or os.urandom(24)
 app.config.from_file('config/config.yaml', load=yaml.safe_load)
 
 # Добавить проверку существования директорий при старте
