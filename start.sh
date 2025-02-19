@@ -18,7 +18,7 @@ mkdir -p /app/temp /app/output /app/videos /app/logs /app/cache
 chmod -R 777 /app/temp /app/output /app/videos /app/logs /app/cache
 
 # Проверяем наличие необходимых переменных окружения
-required_vars=("FLASK_SECRET_KEY" "YOUTUBE_API_KEY")
+required_vars=("YOUTUBE_API_KEY")
 for var in "${required_vars[@]}"; do
     if [ -z "${!var}" ]; then
         echo "Error: $var is not set"
@@ -45,8 +45,5 @@ exec gunicorn --bind 0.0.0.0:8080 \
     --capture-output \
     --enable-stdio-inheritance \
     src.server:app
-
-# Файл должен быть исполняемым
-chmod +x start.sh
 
 trap 'exit 0' SIGTERM

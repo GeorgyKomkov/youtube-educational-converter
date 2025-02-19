@@ -33,7 +33,6 @@ RUN mkdir -p /app/videos /app/output /app/temp /app/cache/models /app/logs && \
 
 # Переменные окружения
 ENV PYTHONPATH=/app \
-    FLASK_APP=src.server \
     PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive
 

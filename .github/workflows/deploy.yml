@@ -36,10 +36,6 @@ jobs:
           script: |
             cd /opt/youtube-converter
             cat > .env << 'EOL'
-            # Flask
-            FLASK_SECRET_KEY=4ea903f687c2efccd3fe7233d9223b85f4eca5bdce90460877eddbfa4ef9a037
-            FLASK_ENV=production
-
             # YouTube API
             YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }}
             YOUTUBE_CLIENT_SECRETS='${{ secrets.YOUTUBE_CLIENT_SECRETS }}'
