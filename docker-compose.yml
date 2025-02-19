@@ -13,6 +13,11 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
+    environment:
+      - FLASK_SECRET_KEY=development_secret_key_123
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+      - YOUTUBE_CLIENT_SECRETS=${YOUTUBE_CLIENT_SECRETS}
+      - REDIS_HOST=redis
     depends_on:
       - redis
 
@@ -21,6 +26,11 @@ services:
       context: .
       dockerfile: Dockerfile
     command: celery -A src.server.celery worker --loglevel=info
+    environment:
+      - FLASK_SECRET_KEY=development_secret_key_123
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+      - YOUTUBE_CLIENT_SECRETS=${YOUTUBE_CLIENT_SECRETS}
+      - REDIS_HOST=redis
     depends_on:
       - redis
 

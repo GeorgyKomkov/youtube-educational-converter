@@ -33,8 +33,11 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: YOUTUBE_API_KEY,YOUTUBE_CLIENT_SECRETS
           script: |
             cd /opt/youtube-converter
+            echo "YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }}" > .env
+            echo "YOUTUBE_CLIENT_SECRETS=${{ secrets.YOUTUBE_CLIENT_SECRETS }}" >> .env
             docker-compose down
             docker system prune -af --volumes
             docker-compose up -d --build
