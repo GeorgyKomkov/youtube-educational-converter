@@ -34,6 +34,10 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            # Настройка системных параметров
+            echo 'vm.overcommit_memory = 1' | sudo tee /etc/sysctl.d/60-redis.conf
+            sudo sysctl --system
+            
             cd /opt/youtube-converter
             docker-compose down
             docker system prune -af --volumes
