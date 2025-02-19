@@ -34,36 +34,21 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Настройка системных параметров
-            echo 'vm.overcommit_memory = 1' | sudo tee /etc/sysctl.d/60-redis.conf
-            sudo sysctl --system
-            
             cd /opt/youtube-converter
             docker-compose down
             docker system prune -af --volumes
             docker-compose up -d --build
             
-            # Ждем запуска
             sleep 30
             
-            # Проверяем статус контейнеров
             echo "=== Docker PS ==="
             docker ps -a
             
-            # Проверяем логи всех контейнеров
             echo "=== All Container Logs ==="
             for container in $(docker ps -aq); do
               echo "=== Logs for $(docker inspect $container -f '{{.Name}}') ==="
-              docker logs $container
+              docker logs $container 2>&1
             done
-            
-            # Проверяем сетевые подключения
-            echo "=== Network Status ==="
-            netstat -tulpn | grep 8080
-            
-            # Проверяем firewall
-            echo "=== UFW Status ==="
-            sudo ufw status
 
       - name: Health check
         run: |

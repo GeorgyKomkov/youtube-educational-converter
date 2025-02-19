@@ -5,12 +5,7 @@ services:
     image: redis:alpine
     volumes:
       - redis_data:/data
-    deploy:
-      resources:
-        limits:
-          cpus: '0.1'
-          memory: 128M
-    command: redis-server --appendonly yes
+    command: redis-server
 
   server:
     build:
@@ -20,37 +15,14 @@ services:
       - "8080:8080"
     depends_on:
       - redis
-    deploy:
-      resources:
-        limits:
-          cpus: '0.3'
-          memory: 512M
 
   worker:
     build:
       context: .
       dockerfile: Dockerfile
     command: celery -A src.server.celery worker --loglevel=info
-    deploy:
-      resources:
-        limits:
-          cpus: '0.4'
-          memory: 768M
-    volumes:
-      - ./videos:/app/videos
-      - ./output:/app/output
-      - ./temp:/app/temp
-      - ./cache:/app/cache
-      - ./logs:/app/logs
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - PYTHONPATH=/app
-      - PYTHONUNBUFFERED=1
-      - WHISPER_MODEL=tiny
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
 
   prometheus:
     image: prom/prometheus
@@ -64,14 +36,6 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-    deploy:
-      resources:
-        limits:
-          cpus: '0.1'
-          memory: 256M
-    depends_on:
-      - server
-      - worker
 
   grafana:
     image: grafana/grafana:latest
