@@ -3,9 +3,6 @@ version: '3.8'
 services:
   redis:
     image: redis:alpine
-    sysctls:
-      - vm.overcommit_memory=1
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     deploy:
       resources:
         limits:

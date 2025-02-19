@@ -34,32 +34,14 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Подготовка директории
-            sudo mkdir -p /opt/youtube-converter
+            # Установка vm.overcommit_memory
+            echo 'vm.overcommit_memory = 1' | sudo tee -a /etc/sysctl.conf
+            sudo sysctl vm.overcommit_memory=1
+            
+            # Деплой приложения
             cd /opt/youtube-converter
-            
-            # Очистка директории перед клонированием
-            sudo rm -rf * .[!.]*
-            
-            # Клонирование репозитория
-            git clone https://github.com/GeorgyKomkov/youtube-educational-converter.git .
-            
-            # Создание .env файла
-            cat > .env << EOF
-            FLASK_SECRET_KEY='$(openssl rand -hex 32)'
-            YOUTUBE_API_KEY='${{ secrets.YOUTUBE_API_KEY }}'
-            FLASK_ENV=production
-            MAX_WORKERS=2
-            WHISPER_MODEL=tiny
-            REDIS_URL=redis://redis:6379/0
-            CELERY_BROKER_URL=redis://redis:6379/0
-            EOF
-            
-            # Создание директорий и установка прав
-            sudo mkdir -p videos output temp cache/models logs
-            sudo chmod -R 777 videos output temp cache logs
-            
-            # Запуск приложения
+            docker-compose down
+            docker system prune -af --volumes
             docker-compose up -d --build
             
             # Проверка статуса
