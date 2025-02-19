@@ -46,9 +46,12 @@ jobs:
             echo "=== Docker PS ==="
             docker ps -a
             
-            # Проверяем логи server контейнера
-            echo "=== Server Logs ==="
-            docker-compose logs server
+            # Проверяем логи всех контейнеров
+            echo "=== All Container Logs ==="
+            for container in $(docker ps -aq); do
+              echo "=== Logs for $(docker inspect $container -f '{{.Name}}') ==="
+              docker logs $container
+            done
             
             # Проверяем сетевые подключения
             echo "=== Network Status ==="
