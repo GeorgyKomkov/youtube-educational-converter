@@ -34,29 +34,45 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            cd /opt/youtube-converter
+            
             # Установка vm.overcommit_memory
             echo 'vm.overcommit_memory = 1' | sudo tee -a /etc/sysctl.conf
             sudo sysctl vm.overcommit_memory=1
             
-            # Деплой приложения
-            cd /opt/youtube-converter
+            # Очистка и запуск
             docker-compose down
             docker system prune -af --volumes
             docker-compose up -d --build
             
-            # Проверка статуса
+            # Ждем запуска и проверяем статус
             sleep 30
+            echo "Docker containers status:"
             docker-compose ps
             
+            echo "Container logs:"
+            docker-compose logs
+            
+            echo "Checking ports:"
+            sudo netstat -tulpn | grep -E '8080|9090|3000'
+            
+            echo "Container resources:"
+            docker stats --no-stream
+
       - name: Health check
         run: |
           sleep 120
           for i in {1..5}; do
+            echo "Attempt $i to connect to health check..."
+            curl -v "http://${{ secrets.SSH_HOST }}:8080/health" || true
             if curl -f "http://${{ secrets.SSH_HOST }}:8080/health"; then
+              echo "Health check passed"
               exit 0
             fi
+            echo "Waiting 30 seconds before next attempt..."
             sleep 30
           done
+          echo "Health check failed after all attempts"
           exit 1
 
       - name: Verify Prometheus
