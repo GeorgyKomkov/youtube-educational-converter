@@ -35,29 +35,28 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /opt/youtube-converter
-            
-            # Установка vm.overcommit_memory
-            echo 'vm.overcommit_memory = 1' | sudo tee -a /etc/sysctl.conf
-            sudo sysctl vm.overcommit_memory=1
-            
-            # Очистка и запуск
             docker-compose down
             docker system prune -af --volumes
             docker-compose up -d --build
             
-            # Ждем запуска и проверяем статус
+            # Ждем запуска
             sleep 30
-            echo "Docker containers status:"
-            docker-compose ps
             
-            echo "Container logs:"
-            docker-compose logs
+            # Проверяем статус контейнеров
+            echo "=== Docker PS ==="
+            docker ps -a
             
-            echo "Checking ports:"
-            sudo netstat -tulpn | grep -E '8080|9090|3000'
+            # Проверяем логи server контейнера
+            echo "=== Server Logs ==="
+            docker-compose logs server
             
-            echo "Container resources:"
-            docker stats --no-stream
+            # Проверяем сетевые подключения
+            echo "=== Network Status ==="
+            netstat -tulpn | grep 8080
+            
+            # Проверяем firewall
+            echo "=== UFW Status ==="
+            sudo ufw status
 
       - name: Health check
         run: |
