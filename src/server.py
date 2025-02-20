@@ -78,7 +78,10 @@ app = Flask(__name__,
     static_folder='static',
     template_folder='templates'
 )
-app.config.update(config)
+app.config.update({
+    'MAX_CONTENT_LENGTH': 500 * 1024 * 1024,  # 500MB max-size
+    'UPLOAD_FOLDER': 'temp'
+})
 
 # Добавить проверку существования директорий при старте
 for directory in [VIDEO_DIR, OUTPUT_DIR, TEMP_DIR]:
@@ -103,6 +106,14 @@ REQUEST_LATENCY = Histogram('request_latency_seconds', 'Request latency in secon
 
 # Блокировка для синхронизации
 cleanup_lock = threading.Lock()
+
+# Ограничение количества одновременных задач
+celery.conf.update(
+    worker_max_tasks_per_child=1,
+    worker_max_memory_per_child=512*1024,  # 512MB
+    task_time_limit=3600,  # 1 час
+    worker_concurrency=1  # только 1 процесс
+)
 
 @celery.task(bind=True, max_retries=3)
 def process_video_task(self, video_url):
@@ -267,6 +278,9 @@ def handle_not_found(e):
 @app.before_request
 def before_request():
     request.start_time = time.time()
+    # Проверка доступной памяти
+    if psutil.virtual_memory().available < 200 * 1024 * 1024:  # 200MB
+        return 'Server is busy, try later', 503
 
 @app.after_request
 def after_request(response):

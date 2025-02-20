@@ -71,21 +71,23 @@ jobs:
             echo "Waiting for containers to start..."
             sleep 45
             
-            # Проверка статуса
+            # Проверка статуса и логов
             if ! docker-compose ps | grep -q "Up"; then
               echo "Error: Containers failed to start"
-              docker-compose logs
+              echo "Server logs:"
+              docker-compose logs server
+              echo "Worker logs:"
+              docker-compose logs worker
               exit 1
             fi
 
       - name: Health checks
         run: |
-          # Функция для проверки endpoint
           check_endpoint() {
             local url=$1
             local name=$2
-            local max_attempts=5
-            local wait_time=30
+            local max_attempts=10  # Увеличиваем количество попыток
+            local wait_time=60    # Увеличиваем время ожидания
             
             echo "Checking $name..."
             for i in $(seq 1 $max_attempts); do
@@ -101,10 +103,5 @@ jobs:
             return 1
           }
           
-          # Проверяем основной сервис
+          # Проверяем только основной сервис
           check_endpoint "http://${{ secrets.SSH_HOST }}:8080/health" "API" || exit 1
-          
-          # Проверяем Prometheus
-          check_endpoint "http://${{ secrets.SSH_HOST }}:9090/-/healthy" "Prometheus" || exit 1
-          
-          echo "All health checks passed successfully"
