@@ -54,42 +54,34 @@ class AudioExtractor:
             # Проверка места на диске
             self._check_disk_space(video_path)
             
-            # Генерация имени выходного файла
-            audio_path = self.temp_dir / f"{video_path.stem}.wav"
-            
-            # Формирование команды ffmpeg
+            # Конвертируем в моно с низким битрейтом
             command = [
                 'ffmpeg',
                 '-i', str(video_path),
-                '-vn',  # Отключаем видео
-                '-acodec', 'pcm_s16le',  # 16-bit PCM
-                '-ar', '16000',  # Частота дискретизации
-                '-ac', '1',  # Моно
-                '-y',  # Перезаписывать существующие файлы
-                str(audio_path)
+                '-vn',
+                '-ac', '1',  # моно
+                '-ar', '16000',  # частота дискретизации
+                '-b:a', '64k',  # низкий битрейт
+                '-f', 'wav',
+                str(self.temp_dir / f"{Path(video_path).stem}.wav")
             ]
             
-            # Запуск ffmpeg
-            process = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                check=False
+            # Используем низкий приоритет процесса
+            process = subprocess.Popen(
+                ['nice', '-n', '19'] + command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
             )
             
+            stdout, stderr = process.communicate()
+            
             if process.returncode != 0:
-                error_msg = process.stderr or "Unknown FFmpeg error"
-                logger.error(f"FFmpeg failed: {error_msg}")
-                raise RuntimeError(f"Failed to extract audio: {error_msg}")
+                raise RuntimeError(f"FFmpeg failed: {stderr.decode()}")
                 
-            if not audio_path.exists():
-                raise RuntimeError("Audio file was not created")
-                
-            logger.info(f"Audio extracted successfully to {audio_path}")
-            return str(audio_path)
+            return str(self.temp_dir / f"{Path(video_path).stem}.wav")
             
         except Exception as e:
-            logger.error(f"Error in audio extraction: {str(e)}")
+            self.logger.error(f"Error in audio extraction: {str(e)}")
             self._cleanup_temp_files()
             raise
             

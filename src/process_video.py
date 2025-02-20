@@ -13,6 +13,8 @@ import whisper
 import logging.config
 import shutil
 import cv2
+import resource
+import gc
 
 # Настройка логирования
 def setup_logging():
@@ -123,31 +125,38 @@ class VideoProcessor:
         self.whisper_model = whisper.load_model("tiny")
 
     def process_video(self, video_path):
-        temp_files = []
         try:
-            # Проверка места на диске
-            self._check_disk_space(video_path)
-
-            # Извлечение аудио
-            audio_path = self._extract_audio(video_path)
-            temp_files.append(audio_path)
-
-            # Транскрибация
-            segments = self._transcribe_audio(audio_path)
-
-            # Обработка кадров
-            frames = self._extract_frames(video_path)
-
-            # Генерация PDF
-            pdf_path = self._generate_pdf(segments, frames)
-
-            return pdf_path
-
+            # Ограничение использования памяти
+            resource.setrlimit(resource.RLIMIT_AS, (1024 * 1024 * 1024, -1))  # 1GB
+            
+            # Используем маленькую модель Whisper
+            model = whisper.load_model("tiny")
+            
+            # Извлекаем аудио
+            audio_extractor = AudioExtractor(self.config['temp_dir'])
+            audio_path = audio_extractor.extract(video_path)
+            
+            # Обработка чанками
+            def process_in_chunks(audio_path, chunk_size=30):
+                results = []
+                audio = whisper.load_audio(audio_path)
+                
+                for i in range(0, len(audio), chunk_size * 16000):
+                    chunk = audio[i:i + chunk_size * 16000]
+                    result = model.transcribe(chunk)
+                    results.append(result['text'])
+                    
+                    # Очистка памяти
+                    torch.cuda.empty_cache()
+                    gc.collect()
+                    
+                return " ".join(results)
+                
+            return process_in_chunks(audio_path)
+            
         except Exception as e:
-            logger.error(f"Error processing video: {e}")
+            logger.error(f"Error in video processing: {e}")
             raise
-        finally:
-            self._cleanup_temp_files(temp_files)
 
     def _check_disk_space(self, video_path):
         try:
@@ -182,18 +191,6 @@ class VideoProcessor:
             )
         except Exception as e:
             self.logger.error(f"Error extracting audio: {e}")
-            raise
-
-    def _transcribe_audio(self, audio_path):
-        """Транскрибация аудио через Whisper"""
-        try:
-            result = self.whisper_model.transcribe(
-                audio_path,
-                language='ru'
-            )
-            return result['segments']
-        except Exception as e:
-            self.logger.error(f"Error transcribing audio: {e}")
             raise
 
     def _extract_frames(self, video_path):

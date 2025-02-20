@@ -5,7 +5,6 @@ services:
     image: redis:alpine
     volumes:
       - redis_data:/data
-    command: redis-server --protected-mode no
     networks:
       - app-network
 
@@ -22,10 +21,7 @@ services:
       - ./logs:/app/logs
     environment:
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
-      - YOUTUBE_CLIENT_SECRETS=${YOUTUBE_CLIENT_SECRETS}
       - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - MAX_WORKERS=2
     depends_on:
       - redis
     networks:
@@ -43,51 +39,15 @@ services:
       - ./logs:/app/logs
     environment:
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
-      - YOUTUBE_CLIENT_SECRETS=${YOUTUBE_CLIENT_SECRETS}
       - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
     depends_on:
       - redis
     networks:
       - app-network
 
-  prometheus:
-    image: prom/prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus:/etc/prometheus
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-    networks:
-      - app-network
-
-  grafana:
-    image: grafana/grafana:latest
-    volumes:
-      - grafana_data:/var/lib/grafana
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-    ports:
-      - "3000:3000"
-    depends_on:
-      - prometheus
-    networks:
-      - app-network
-
 volumes:
   redis_data:
-  prometheus_data:
-  grafana_data:
 
 networks:
   app-network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16

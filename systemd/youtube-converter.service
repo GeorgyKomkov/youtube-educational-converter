@@ -13,6 +13,11 @@ ExecStop=/usr/bin/docker-compose down
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
+# Ограничение ресурсов
+MemoryLimit=900M
+CPUQuota=80%
+IOWeight=100
+Nice=10
 
 [Install]
 WantedBy=multi-user.target

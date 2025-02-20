@@ -6,11 +6,17 @@ async function exportYouTubeCookies() {
             .map(cookie => cookie.trim())
             .filter(cookie => cookie.startsWith('YT'));
         
+        if (cookies.length === 0) {
+            showAlert('No YouTube cookies found. Please login to YouTube first.', 'warning');
+            return;
+        }
+        
         // Отправляем на сервер
         const response = await fetch('/save_cookies', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
             },
             body: JSON.stringify(cookies)
         });
@@ -25,22 +31,29 @@ async function exportYouTubeCookies() {
     }
 }
 
-async function startConversion() {
-    const urlInput = document.getElementById('url');
-    const statusDiv = document.getElementById('status');
+async function convertVideo() {
+    const urlInput = document.getElementById('video-url');
     const url = urlInput.value.trim();
 
     if (!url) {
-        showStatus('Please enter a YouTube URL', 'error');
+        showAlert('Please enter a YouTube URL', 'error');
+        return;
+    }
+
+    if (!url.match(/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)/)) {
+        showAlert('Please enter a valid YouTube URL', 'error');
         return;
     }
 
     try {
+        showStatus('Starting conversion...', 'info');
+        
         // Начинаем конвертацию
         const response = await fetch('/api/convert', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
             },
             body: JSON.stringify({ url })
         });
@@ -48,7 +61,7 @@ async function startConversion() {
         const data = await response.json();
 
         if (data.error) {
-            showStatus(data.error, 'error');
+            showAlert(data.error, 'error');
             return;
         }
 
@@ -56,7 +69,7 @@ async function startConversion() {
         checkStatus(data.task_id);
 
     } catch (error) {
-        showStatus('Error starting conversion: ' + error, 'error');
+        showAlert('Error starting conversion: ' + error, 'error');
     }
 }
 
@@ -66,12 +79,16 @@ async function checkStatus(taskId) {
         const data = await response.json();
 
         if (data.status === 'completed') {
-            showStatus('Conversion completed! Downloading...', 'success');
-            window.location.href = data.download_url;
+            showStatus('Conversion completed!', 'success');
+            if (data.download_url) {
+                setTimeout(() => {
+                    window.location.href = data.download_url;
+                }, 1000);
+            }
         } else if (data.status === 'failed') {
             showStatus('Conversion failed: ' + data.error, 'error');
         } else {
-            showStatus(`Converting... ${data.progress}%`, 'info');
+            showStatus(`Converting... ${data.progress || 0}%`, 'info');
             setTimeout(() => checkStatus(taskId), 2000);
         }
     } catch (error) {
@@ -85,6 +102,11 @@ function showAlert(message, type) {
     alertDiv.textContent = message;
     
     const container = document.querySelector('.container');
+    const existingAlert = container.querySelector('.alert');
+    if (existingAlert) {
+        existingAlert.remove();
+    }
+    
     container.insertBefore(alertDiv, container.firstChild);
     
     setTimeout(() => {
@@ -95,5 +117,5 @@ function showAlert(message, type) {
 function showStatus(message, type) {
     const statusDiv = document.getElementById('status');
     statusDiv.textContent = message;
-    statusDiv.className = type;
+    statusDiv.className = `status status-${type}`;
 }

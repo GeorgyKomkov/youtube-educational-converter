@@ -35,63 +35,76 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /opt/youtube-converter
-            cat > .env << 'EOL'
-            # YouTube API
-            YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }}
-            YOUTUBE_CLIENT_SECRETS='${{ secrets.YOUTUBE_CLIENT_SECRETS }}'
-
-            # Redis
-            REDIS_URL=redis://redis:6379/0
-            CELERY_BROKER_URL=redis://redis:6379/0
-
-            # App Settings
-            MAX_WORKERS=2
-            WHISPER_MODEL=tiny
-            MAX_VIDEO_SIZE=500
-            EMERGENCY_CLEANUP_THRESHOLD=85
-
-            # Monitoring
-            PROMETHEUS_PORT=9090
-            GRAFANA_ADMIN_PASSWORD=admin
+            
+            # Создаем бэкап текущих данных
+            timestamp=$(date +%Y%m%d_%H%M%S)
+            mkdir -p backups
+            tar -czf backups/data_$timestamp.tar.gz videos output logs || true
+            
+            # Обновляем конфигурацию
+            cat > config/config.yaml << 'EOL'
+            youtube_api:
+              api_key: ${{ secrets.YOUTUBE_API_KEY }}
+              client_secrets: '${{ secrets.YOUTUBE_CLIENT_SECRETS }}'
+            
+            redis:
+              url: redis://redis:6379/0
+              broker_url: redis://redis:6379/0
+            
+            server:
+              workers: 2
+              model: tiny
+              max_video_size: 500
+              cleanup_threshold: 85
+            
+            monitoring:
+              prometheus_port: 9090
             EOL
 
+            # Очистка и перезапуск
             docker-compose down
             docker system prune -af --volumes
+            docker-compose pull
             docker-compose up -d --build
             
-            sleep 30
+            # Ждем запуска контейнеров
+            echo "Waiting for containers to start..."
+            sleep 45
             
-            echo "=== Docker PS ==="
-            docker ps -a
-            
-            echo "=== All Container Logs ==="
-            for container in $(docker ps -aq); do
-              echo "=== Logs for $(docker inspect $container -f '{{.Name}}') ==="
-              docker logs $container 2>&1
-            done
-
-      - name: Health check
-        run: |
-          sleep 180  # Увеличим время ожидания до 3 минут
-          for i in {1..5}; do
-            echo "Attempt $i to connect to health check..."
-            curl -v "http://${{ secrets.SSH_HOST }}:8080/health" || true
-            if curl -f "http://${{ secrets.SSH_HOST }}:8080/health"; then
-              echo "Health check passed"
-              exit 0
+            # Проверка статуса
+            if ! docker-compose ps | grep -q "Up"; then
+              echo "Error: Containers failed to start"
+              docker-compose logs
+              exit 1
             fi
-            echo "Waiting 30 seconds before next attempt..."
-            sleep 30
-          done
-          echo "Health check failed after all attempts"
-          exit 1
 
-      - name: Verify Prometheus
+      - name: Health checks
         run: |
-          sleep 15
-          curl -f "http://${{ secrets.SSH_HOST }}:9091/metrics" || exit 1
-
-      - name: Verify Grafana
-        run: |
-          sleep 15
-          curl -f "http://${{ secrets.SSH_HOST }}:3000" || exit 1
+          # Функция для проверки endpoint
+          check_endpoint() {
+            local url=$1
+            local name=$2
+            local max_attempts=5
+            local wait_time=30
+            
+            echo "Checking $name..."
+            for i in $(seq 1 $max_attempts); do
+              echo "Attempt $i of $max_attempts"
+              if curl -sSf "$url" >/dev/null 2>&1; then
+                echo "$name check passed"
+                return 0
+              fi
+              echo "Waiting ${wait_time}s before next attempt..."
+              sleep $wait_time
+            done
+            echo "$name check failed after $max_attempts attempts"
+            return 1
+          }
+          
+          # Проверяем основной сервис
+          check_endpoint "http://${{ secrets.SSH_HOST }}:8080/health" "API" || exit 1
+          
+          # Проверяем Prometheus
+          check_endpoint "http://${{ secrets.SSH_HOST }}:9090/-/healthy" "Prometheus" || exit 1
+          
+          echo "All health checks passed successfully"

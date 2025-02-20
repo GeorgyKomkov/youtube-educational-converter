@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,44 +15,64 @@
         <!-- Секция для cookies -->
         <div class="cookies-section">
             <button onclick="exportYouTubeCookies()" class="btn btn-primary">
-                Export YouTube Cookies
+                Экспорт YouTube Cookies
             </button>
             <small class="text-muted">
-                This is required to download age-restricted or private videos
+                Необходимо для загрузки видео с ограничением по возрасту или приватных видео
             </small>
         </div>
 
         <!-- Форма конвертера -->
         <div class="converter-form">
-            <input type="text" 
-                   id="video-url" 
-                   placeholder="Enter YouTube URL"
-                   aria-label="YouTube video URL">
-            <button onclick="convertVideo()" 
-                    class="btn btn-success"
-                    aria-label="Convert video">
-                Convert
-            </button>
+            <div class="input-group">
+                <input type="text" 
+                       id="video-url" 
+                       placeholder="Введите URL видео с YouTube"
+                       aria-label="URL видео с YouTube">
+                <button onclick="convertVideo()" 
+                        class="btn btn-success"
+                        aria-label="Конвертировать">
+                    Конвертировать
+                </button>
+            </div>
+            <small class="text-muted">
+                Поддерживаются ссылки вида: youtube.com/watch?v=... или youtu.be/...
+            </small>
         </div>
 
         <!-- Статус конвертации -->
         <div id="status" role="status" aria-live="polite"></div>
+
+        <!-- Прогресс -->
+        <div class="progress-container" style="display: none;">
+            <div class="progress-bar"></div>
+        </div>
     </div>
 
     <!-- Скрипты -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     
-    <!-- Обработка ошибок загрузки скриптов -->
+    <!-- Обработка ошибок -->
     <script>
         window.onerror = function(msg, url, lineNo, columnNo, error) {
-            console.error('Error: ' + msg + '\nURL: ' + url + '\nLine: ' + lineNo);
-            const container = document.querySelector('.container');
-            const alert = document.createElement('div');
-            alert.className = 'alert alert-error';
-            alert.textContent = 'An error occurred while loading the page. Please refresh.';
-            container.insertBefore(alert, container.firstChild);
+            console.error('Error:', msg, '\nURL:', url, '\nLine:', lineNo);
+            showAlert('Произошла ошибка при загрузке страницы. Пожалуйста, обновите страницу.', 'error');
             return false;
         };
+
+        // Предотвращение множественных отправок
+        let isProcessing = false;
+        const convertBtn = document.querySelector('button[onclick="convertVideo()"]');
+        
+        function convertVideo() {
+            if (isProcessing) {
+                showAlert('Подождите, идет обработка...', 'warning');
+                return;
+            }
+            isProcessing = true;
+            convertBtn.disabled = true;
+            // ... остальной код конвертации ...
+        }
     </script>
 </body>
 </html> 

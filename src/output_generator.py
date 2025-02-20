@@ -154,3 +154,60 @@ class OutputGenerator:
     def __del__(self):
         """Деструктор"""
         self.cleanup()
+
+    def _generate_markdown(self, transcription, frames, video_title):
+        """Генерация Markdown с улучшенной структурой"""
+        try:
+            md_content = [f"# {video_title}\n\n"]
+            
+            # Группируем текст по темам
+            segments = self._group_by_topics(transcription)
+            
+            for topic, text_segments in segments.items():
+                md_content.append(f"## {topic}\n\n")
+                
+                # Находим релевантные кадры для темы
+                relevant_frames = self._find_relevant_frames(text_segments, frames)
+                
+                # Добавляем текст и изображения
+                for text, frame in zip(text_segments, relevant_frames):
+                    md_content.append(f"{text}\n\n")
+                    if frame:
+                        md_content.append(
+                            f"![{frame['caption']}]({frame['path']})\n\n"
+                        )
+                        
+            return "\n".join(md_content)
+            
+        except Exception as e:
+            self.logger.error(f"Error generating markdown: {e}")
+            raise
+
+    def _group_by_topics(self, transcription):
+        """Группировка текста по темам используя NLP"""
+        try:
+            from transformers import pipeline
+            
+            classifier = pipeline(
+                "zero-shot-classification",
+                model="facebook/bart-large-mnli"
+            )
+            
+            # Определяем темы
+            topics = classifier(
+                transcription,
+                candidate_labels=["введение", "основная часть", "заключение"]
+            )
+            
+            # Группируем текст
+            segments = {}
+            for label in topics['labels']:
+                segments[label] = []
+                
+            # ... логика группировки текста ...
+            
+            return segments
+            
+        except Exception as e:
+            self.logger.error(f"Error grouping topics: {e}")
+            raise

@@ -19,10 +19,10 @@ transcription:
   chunk_duration: 30  # seconds
 
 video_processing:
-  max_frames: 20
+  max_frames: 10
   frame_mode: 'scenes'
   frame_interval: 60  # seconds
-  max_resolution: 720
+  max_resolution: 480
   frame_quality: 85
   thumbnail_size: [320, 180]
 

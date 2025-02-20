@@ -29,6 +29,9 @@ class FrameProcessor:
         
         # Инициализация моделей
         self._initialize_models()
+        
+        # Добавляем CLIP для лучшего сопоставления текста и изображений
+        self.clip_model = self._initialize_clip()
 
     def _load_config(self):
         """Загрузка конфигурации"""
@@ -59,6 +62,16 @@ class FrameProcessor:
             
         except Exception as e:
             self.logger.error(f"Error initializing models: {e}")
+            raise
+
+    def _initialize_clip(self):
+        """Инициализация CLIP модели"""
+        try:
+            import clip
+            model, preprocess = clip.load("ViT-B/32", device=self.device)
+            return {"model": model, "preprocess": preprocess}
+        except Exception as e:
+            self.logger.error(f"Error loading CLIP: {e}")
             raise
 
     def process(self, video_path):
@@ -144,3 +157,36 @@ class FrameProcessor:
     def __del__(self):
         """Деструктор для очистки ресурсов"""
         self.cleanup()
+
+    def _select_most_relevant_frames(self, frames, text_segments):
+        """Выбор наиболее релевантных кадров для текста"""
+        try:
+            # Получаем эмбеддинги текста через CLIP
+            text_features = self.clip_model["model"].encode_text(text_segments)
+            
+            # Получаем эмбеддинги изображений
+            image_features = []
+            for frame in frames:
+                image = self.clip_model["preprocess"](Image.open(frame['path']))
+                image_features.append(
+                    self.clip_model["model"].encode_image(image.unsqueeze(0))
+                )
+            
+            # Вычисляем similarity scores
+            similarity = torch.cosine_similarity(
+                text_features.unsqueeze(1),
+                torch.cat(image_features).unsqueeze(0),
+                dim=-1
+            )
+            
+            # Выбираем лучшие кадры для каждого сегмента текста
+            best_frames = []
+            for scores in similarity:
+                best_idx = scores.argmax().item()
+                best_frames.append(frames[best_idx])
+            
+            return best_frames
+            
+        except Exception as e:
+            self.logger.error(f"Error selecting relevant frames: {e}")
+            raise
