@@ -39,7 +39,6 @@ parallel_processing:
 server:
   host: "0.0.0.0"
   port: 8080
-  secret_key: '4ea903f687c2efccd3fe7233d9223b85f4eca5bdce90460877eddbfa4ef9a037'  # Фиксированный ключ
   workers: 2
   threads: 4
   timeout: 120

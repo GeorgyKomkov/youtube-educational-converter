@@ -1,3 +1,4 @@
+import yaml
 import os
 import sys
 import logging
@@ -115,8 +116,8 @@ class VideoProcessor:
         self.temp_dir.mkdir(exist_ok=True)
         self.output_dir.mkdir(exist_ok=True)
         self.logger = logging.getLogger(__name__)
-        self.audio_extractor = AudioExtractor()
-        self.output_generator = OutputGenerator()
+        self.audio_extractor = AudioExtractor(self.temp_dir)
+        self.output_generator = OutputGenerator(self.output_dir)
         
         # Инициализация Whisper с маленькой моделью
         self.whisper_model = whisper.load_model("tiny")

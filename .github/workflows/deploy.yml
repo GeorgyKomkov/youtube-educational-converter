@@ -72,7 +72,7 @@ jobs:
 
       - name: Health check
         run: |
-          sleep 120
+          sleep 180  # Увеличим время ожидания до 3 минут
           for i in {1..5}; do
             echo "Attempt $i to connect to health check..."
             curl -v "http://${{ secrets.SSH_HOST }}:8080/health" || true

@@ -125,3 +125,7 @@ class YouTubeAPI:
                 self.session.close()
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")
+
+    def _load_api_key(self):
+        """Загрузка API ключа"""
+        return os.environ.get('YOUTUBE_API_KEY')

@@ -78,8 +78,7 @@ app = Flask(__name__,
     static_folder='static',
     template_folder='templates'
 )
-app.secret_key = app.config.get('server', {}).get('secret_key') or os.urandom(24)
-app.config.from_file('config/config.yaml', load=yaml.safe_load)
+app.config.update(config)
 
 # Добавить проверку существования директорий при старте
 for directory in [VIDEO_DIR, OUTPUT_DIR, TEMP_DIR]:

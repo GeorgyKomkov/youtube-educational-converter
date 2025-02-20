@@ -5,7 +5,9 @@ services:
     image: redis:alpine
     volumes:
       - redis_data:/data
-    command: redis-server
+    command: redis-server --protected-mode no
+    networks:
+      - app-network
 
   server:
     build:
@@ -21,10 +23,13 @@ services:
     environment:
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
       - YOUTUBE_CLIENT_SECRETS=${YOUTUBE_CLIENT_SECRETS}
-      - REDIS_HOST=redis
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
       - MAX_WORKERS=2
     depends_on:
       - redis
+    networks:
+      - app-network
 
   worker:
     build:
@@ -39,9 +44,12 @@ services:
     environment:
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
       - YOUTUBE_CLIENT_SECRETS=${YOUTUBE_CLIENT_SECRETS}
-      - REDIS_HOST=redis
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
     depends_on:
       - redis
+    networks:
+      - app-network
 
   prometheus:
     image: prom/prometheus
@@ -55,6 +63,8 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - app-network
 
   grafana:
     image: grafana/grafana:latest
@@ -67,6 +77,8 @@ services:
       - "3000:3000"
     depends_on:
       - prometheus
+    networks:
+      - app-network
 
 volumes:
   redis_data:
@@ -74,7 +86,7 @@ volumes:
   grafana_data:
 
 networks:
-  default:
+  app-network:
     driver: bridge
     ipam:
       config:
