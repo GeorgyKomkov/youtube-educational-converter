@@ -5,7 +5,6 @@ import logging
 from pathlib import Path
 import torch
 from os import statvfs
-from . import config
 from .audio_extractor import AudioExtractor
 from .frame_processor import FrameProcessor
 from .output_generator import OutputGenerator

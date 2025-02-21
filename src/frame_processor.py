@@ -1,11 +1,8 @@
 import cv2
-import os
 import logging
-import numpy as np
 from PIL import Image
 import torch
 from transformers import pipeline
-import time
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 import yaml

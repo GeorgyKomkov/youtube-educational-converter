@@ -1,12 +1,8 @@
 import os
-import json
-import logging
+import logging.config
 import redis
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 import yt_dlp
-import yaml
-from pathlib import Path
 import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry

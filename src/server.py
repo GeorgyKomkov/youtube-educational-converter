@@ -8,9 +8,10 @@ from flask import (
 )
 import os
 import logging
+import logging.config
 from datetime import datetime
 import time
-import threading
+from threading import Lock
 from celery import Celery
 import redis
 import psutil
@@ -113,7 +114,7 @@ REQUEST_COUNT = Counter('request_count_total', 'Total request count', ['method',
 REQUEST_LATENCY = Histogram('request_latency_seconds', 'Request latency in seconds')
 
 # Блокировка для синхронизации
-cleanup_lock = threading.Lock()
+cleanup_lock = Lock()
 
 # Ограничение количества одновременных задач
 celery.conf.update(

@@ -2,7 +2,7 @@ import os
 import logging
 import subprocess
 from pathlib import Path
-import shutil
+from shutil import disk_usage
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ class AudioExtractor:
         """Проверка свободного места на диске"""
         try:
             video_size = os.path.getsize(video_path)
-            free_space = shutil.disk_usage(self.temp_dir).free
+            free_space = disk_usage(self.temp_dir).free
             
             # Требуем в 2 раза больше места, чем размер видео
             required_space = video_size * 2

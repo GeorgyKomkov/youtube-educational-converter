@@ -1,10 +1,6 @@
-import os
 import logging
 import markdown2
 import pdfkit
-import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
 import shutil
 import subprocess
 from PIL import Image
