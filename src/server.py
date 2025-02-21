@@ -29,7 +29,7 @@ from .process_video import VideoProcessor
 
 def setup_logging():
     try:
-        with open('config/logging.yaml', 'r') as f:
+        with open('/app/config/logging.yaml', 'r') as f:
             config = yaml.safe_load(f)
         logging.config.dictConfig(config)
     except Exception as e:
@@ -50,7 +50,7 @@ TEMP_DIR = "/app/temp"
 def load_config():
     """Загрузка и валидация конфигурации"""
     try:
-        with open('config/config.yaml', 'r') as f:
+        with open('/app/config/config.yaml', 'r') as f:
             config = yaml.safe_load(f)
             
         # Проверяем обязательные параметры
@@ -63,7 +63,7 @@ def load_config():
     except Exception as e:
         logger.error(f"Error loading config: {e}")
         return {
-            'temp_dir': TEMP_DIR,
+            'temp_dir': '/app/temp',
             'memory': {
                 'emergency_cleanup_threshold': 85,
                 'cleanup_interval': 3600
@@ -75,7 +75,7 @@ def load_config():
             'storage': {
                 'temp_lifetime': 3600,
                 'cache_size_mb': 1000,
-                'cache_dir': TEMP_DIR
+                'cache_dir': '/app/temp'
             }
         }
 
@@ -83,13 +83,13 @@ def load_config():
 config = load_config()
 
 # Инициализация Flask
-app = Flask(__name__, 
-    static_folder='static',
-    template_folder='templates'
+app = Flask(__name__,
+    static_folder='/app/static',
+    template_folder='/app/templates'
 )
 app.config.update({
     'MAX_CONTENT_LENGTH': 500 * 1024 * 1024,  # 500MB max-size
-    'UPLOAD_FOLDER': 'temp'
+    'UPLOAD_FOLDER': '/app/temp'
 })
 
 # Добавить проверку существования директорий при старте
