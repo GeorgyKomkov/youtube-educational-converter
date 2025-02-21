@@ -41,6 +41,10 @@ jobs:
             mkdir -p backups
             tar -czf backups/data_$timestamp.tar.gz videos output logs || true
             
+            # Клонируем свежую версию из репозитория
+            git fetch origin main
+            git reset --hard origin/main
+            
             # Обновляем конфигурацию
             cat > config/config.yaml << 'EOL'
             youtube_api:
