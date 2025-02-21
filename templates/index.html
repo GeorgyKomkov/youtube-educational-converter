@@ -12,23 +12,13 @@
     <div class="container">
         <h1>YouTube Educational Converter</h1>
         
-        <!-- Форма конвертера -->
-        <div class="converter-form">
-            <div class="input-group">
-                <input type="text" 
-                       id="video-url" 
-                       placeholder="Введите URL видео с YouTube"
-                       aria-label="URL видео с YouTube">
-                <button onclick="convertVideo()" 
-                        class="btn btn-success"
-                        aria-label="Конвертировать">
-                    Конвертировать
-                </button>
+        <!-- Добавляем id для формы -->
+        <form id="video-form" class="video-form">
+            <div class="form-group">
+                <input type="text" id="video-url" name="url" class="form-control" placeholder="Введите URL видео с YouTube">
             </div>
-            <small class="text-muted">
-                Поддерживаются ссылки вида: youtube.com/watch?v=... или youtu.be/...
-            </small>
-        </div>
+            <button type="submit" class="btn btn-primary">Конвертировать</button>
+        </form>
 
         <!-- Статус конвертации -->
         <div id="status" role="status" aria-live="polite"></div>

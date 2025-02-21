@@ -6,6 +6,15 @@ document.addEventListener('DOMContentLoaded', function() {
         // Если куки приняты, запускаем фоновый процесс
         handleYouTubeCookies();
     }
+
+    // Ищем форму по id
+    const form = document.getElementById('video-form');
+    
+    if (form) {
+        form.addEventListener('submit', handleFormSubmit);
+    } else {
+        console.error('Form with id "video-form" not found');
+    }
 });
 
 function showCookieModal() {
@@ -57,7 +66,9 @@ async function handleYouTubeCookies() {
     }
 }
 
-async function convertVideo() {
+async function handleFormSubmit(event) {
+    event.preventDefault();
+    
     const urlInput = document.getElementById('video-url');
     const url = urlInput.value.trim();
 
@@ -75,10 +86,13 @@ async function convertVideo() {
 
     try {
         console.log('Sending request to server...'); // Отладочный лог
+        
+        // Показываем индикатор прогресса
+        document.getElementById('conversion-progress').style.display = 'block';
         showStatus('Starting conversion...', 'info');
         
-        // Начинаем конвертацию
-        const response = await fetch('/api/convert', {
+        // Отправляем запрос
+        const response = await fetch('/process_video', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -89,43 +103,59 @@ async function convertVideo() {
 
         console.log('Got response:', response); // Отладочный лог
 
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+
         const data = await response.json();
         console.log('Response data:', data); // Отладочный лог
 
         if (data.error) {
-            showAlert(data.error, 'error');
-            return;
+            throw new Error(data.error);
         }
 
         // Начинаем проверять статус
-        checkStatus(data.task_id);
+        await checkConversionStatus(data.task_id);
 
     } catch (error) {
-        console.error('Error:', error); // Отладочный лог
-        showAlert('Error starting conversion: ' + error, 'error');
+        console.error('Error:', error);
+        showAlert('Error starting conversion: ' + error.message, 'error');
+        document.getElementById('conversion-progress').style.display = 'none';
     }
 }
 
-async function checkStatus(taskId) {
+async function checkConversionStatus(taskId) {
     try {
-        const response = await fetch(`/api/status/${taskId}`);
-        const data = await response.json();
-
-        if (data.status === 'completed') {
-            showStatus('Conversion completed!', 'success');
-            if (data.download_url) {
-                setTimeout(() => {
-                    window.location.href = data.download_url;
-                }, 1000);
+        while (true) {
+            const response = await fetch(`/status/${taskId}`);
+            const data = await response.json();
+            
+            // Обновляем прогресс-бар
+            const progressBar = document.getElementById('progress-bar-fill');
+            progressBar.style.width = `${data.progress}%`;
+            
+            if (data.status === 'completed') {
+                // Скрываем индикатор прогресса
+                document.getElementById('conversion-progress').style.display = 'none';
+                showStatus('Conversion completed!', 'success');
+                
+                // Скачиваем PDF
+                window.location.href = `/download/${taskId}`;
+                break;
+                
+            } else if (data.status === 'failed') {
+                throw new Error(data.error || 'Conversion failed');
+            } else {
+                showStatus(`Converting... ${data.progress || 0}%`, 'info');
             }
-        } else if (data.status === 'failed') {
-            showStatus('Conversion failed: ' + data.error, 'error');
-        } else {
-            showStatus(`Converting... ${data.progress || 0}%`, 'info');
-            setTimeout(() => checkStatus(taskId), 2000);
+            
+            // Ждем перед следующей проверкой
+            await new Promise(resolve => setTimeout(resolve, 2000));
         }
     } catch (error) {
-        showStatus('Error checking status: ' + error, 'error');
+        console.error('Error checking status:', error);
+        showAlert('Error checking conversion status: ' + error.message, 'error');
+        document.getElementById('conversion-progress').style.display = 'none';
     }
 }
 
@@ -153,74 +183,3 @@ function showStatus(message, type) {
     statusDiv.className = `status status-${type}`;
 }
 
-async function handleFormSubmit(event) {
-    event.preventDefault();
-    
-    const form = event.target;
-    const formData = new FormData(form);
-    
-    try {
-        // Показываем индикатор прогресса
-        document.getElementById('conversion-progress').style.display = 'block';
-        
-        // Отправляем форму
-        const response = await fetch('/process_video', {
-            method: 'POST',
-            body: formData
-        });
-        
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        
-        const result = await response.json();
-        const taskId = result.task_id;
-        
-        // Начинаем проверку статуса
-        await checkConversionStatus(taskId);
-        
-    } catch (error) {
-        console.error('Error:', error);
-        showAlert('Произошла ошибка при обработке видео', 'error');
-        // Скрываем индикатор при ошибке
-        document.getElementById('conversion-progress').style.display = 'none';
-    }
-}
-
-async function checkConversionStatus(taskId) {
-    try {
-        while (true) {
-            const response = await fetch(`/status/${taskId}`);
-            const data = await response.json();
-            
-            // Обновляем прогресс-бар
-            const progressBar = document.getElementById('progress-bar-fill');
-            progressBar.style.width = `${data.progress}%`;
-            
-            if (data.status === 'completed') {
-                // Скрываем индикатор прогресса
-                document.getElementById('conversion-progress').style.display = 'none';
-                
-                // Показываем успешное завершение
-                showAlert('Конвертация завершена! Скачивание начнется автоматически', 'success');
-                
-                // Скачиваем PDF
-                window.location.href = `/download/${taskId}`;
-                break;
-                
-            } else if (data.status === 'failed') {
-                throw new Error(data.error || 'Конвертация не удалась');
-            }
-            
-            // Ждем перед следующей проверкой
-            await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-    } catch (error) {
-        console.error('Error checking status:', error);
-        showAlert('Ошибка при проверке статуса конвертации', 'error');
-        document.getElementById('conversion-progress').style.display = 'none';
-    }
-}
-
-// Добавляем обработчик формы
-document.querySelector('form').addEventListener('submit', handleFormSubmit);
