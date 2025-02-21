@@ -22,6 +22,7 @@ from prometheus_client import start_http_server, Counter, Histogram
 import sys
 import json
 from apscheduler.schedulers.background import BackgroundScheduler
+import socket
 
 # Импортируем нужные модули
 from .youtube_api import YouTubeAPI
@@ -167,55 +168,46 @@ def index():
     """Главная страница"""
     return render_template('index.html')
 
-@app.route('/api/convert', methods=['POST'])
-def convert_video():
-    """API endpoint для конвертации видео"""
+@app.route('/process_video', methods=['POST'])
+def process_video():
     try:
-        logger.info("Received conversion request")
-        data = request.json
+        data = request.get_json()
         if not data or 'url' not in data:
-            logger.warning("No URL provided")
             return jsonify({'error': 'No URL provided'}), 400
-
-        # Создаем задачу
-        logger.info(f"Creating task for URL: {data['url']}")
-        task = process_video_task.delay(data['url'])
+            
+        url = data.get('url')
+        task = process_video_task.delay(url)
         
-        logger.info(f"Task created with ID: {task.id}")
         return jsonify({
-            'status': 'processing',
-            'task_id': task.id
+            'task_id': task.id,
+            'status': 'processing'
         })
     except Exception as e:
-        logger.error(f"Error starting conversion: {e}")
+        logger.error(f"Error processing video request: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/status/<task_id>')
-def check_status(task_id):
-    """Проверка статуса задачи"""
+@app.route('/status/<task_id>')
+def get_task_status(task_id):
     try:
         task = process_video_task.AsyncResult(task_id)
+        response = {
+            'task_id': task_id,
+            'status': task.status,
+            'progress': 0
+        }
         
-        if task.ready():
-            if task.successful():
-                result = task.get()
-                return jsonify({
-                    'status': 'completed',
-                    'video_path': result['video_path'],
-                    'title': result.get('title', 'Video')
-                })
-            else:
-                return jsonify({
-                    'status': 'failed',
-                    'error': str(task.result)
-                })
-        
-        return jsonify({
-            'status': 'processing',
-            'progress': task.info.get('progress', 0) if task.info else 0
-        })
+        if task.status == 'SUCCESS':
+            response['status'] = 'completed'
+            response['progress'] = 100
+        elif task.status == 'FAILURE':
+            response['status'] = 'failed'
+            response['error'] = str(task.result)
+        elif task.status == 'PROCESSING':
+            response['progress'] = task.info.get('progress', 0) if task.info else 0
+            
+        return jsonify(response)
     except Exception as e:
-        logger.error(f"Error checking status: {e}")
+        logger.error(f"Error checking task status: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/set-cookies', methods=['POST'])
@@ -316,7 +308,12 @@ scheduler.start()
 
 # Запуск сервера метрик Prometheus
 try:
-    start_http_server(9091)
+    # Проверяем, не занят ли порт
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    result = sock.connect_ex(('127.0.0.1', 9091))
+    if result != 0:  # Порт свободен
+        start_http_server(9091)
+    sock.close()
 except Exception as e:
     logger.error(f"Failed to start Prometheus server: {e}")
 

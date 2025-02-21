@@ -72,55 +72,36 @@ async function handleFormSubmit(event) {
     const urlInput = document.getElementById('video-url');
     const url = urlInput.value.trim();
 
-    console.log('Starting conversion for URL:', url); // Отладочный лог
-
-    if (!url) {
-        showAlert('Please enter a YouTube URL', 'error');
-        return;
-    }
-
-    if (!url.match(/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)/)) {
-        showAlert('Please enter a valid YouTube URL', 'error');
-        return;
-    }
+    console.log('Form submitted with URL:', url);
 
     try {
-        console.log('Sending request to server...'); // Отладочный лог
-        
-        // Показываем индикатор прогресса
-        document.getElementById('conversion-progress').style.display = 'block';
-        showStatus('Starting conversion...', 'info');
-        
-        // Отправляем запрос
         const response = await fetch('/process_video', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
             },
             body: JSON.stringify({ url })
         });
 
-        console.log('Got response:', response); // Отладочный лог
-
+        console.log('Server response status:', response.status);
+        
         if (!response.ok) {
-            throw new Error('Network response was not ok');
+            const errorText = await response.text();
+            console.error('Server error:', errorText);
+            throw new Error(`Server error: ${response.status}`);
         }
 
         const data = await response.json();
-        console.log('Response data:', data); // Отладочный лог
-
-        if (data.error) {
-            throw new Error(data.error);
+        console.log('Server response data:', data);
+        
+        if (data.task_id) {
+            await checkConversionStatus(data.task_id);
+        } else {
+            throw new Error('No task ID received');
         }
-
-        // Начинаем проверять статус
-        await checkConversionStatus(data.task_id);
-
     } catch (error) {
         console.error('Error:', error);
-        showAlert('Error starting conversion: ' + error.message, 'error');
-        document.getElementById('conversion-progress').style.display = 'none';
+        showAlert('Error: ' + error.message);
     }
 }
 
