@@ -26,11 +26,19 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from .youtube_api import YouTubeAPI
 from .process_video import VideoProcessor
 
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+def setup_logging():
+    try:
+        with open('config/logging.yaml', 'r') as f:
+            config = yaml.safe_load(f)
+        logging.config.dictConfig(config)
+    except Exception as e:
+        print(f"Error setting up logging: {e}")
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 # Константы

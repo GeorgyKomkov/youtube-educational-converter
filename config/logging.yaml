@@ -59,4 +59,4 @@ loggers:
     server:
         level: INFO
         handlers: [console, file, error_file]
-        propagate: false 
+        propagate: false

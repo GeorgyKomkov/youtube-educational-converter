@@ -12,6 +12,50 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify project files
+        run: |
+          # Проверка наличия основных файлов
+          required_files=(
+            "start.sh"
+            "requirements.txt"
+            "README.md"
+            "Procfile"
+            "Dockerfile"
+            "docker-compose.yml"
+            ".dockerignore"
+            ".env"
+            "templates/index.html"
+            "systemd/youtube-converter.service"
+            "static/js/main.js"
+            "src/youtube_api.py"
+            "src/server.py"
+            "src/process_video.py"
+            "src/output_generator.py"
+            "src/frame_processor.py"
+            "src/audio_extractor.py"
+            "src/__init__.py"
+            "prometheus/prometheus.yml"
+            "config/youtube.cookies"
+            "config/logging.yaml"
+            "config/config.yaml"
+          )
+
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "Error: Required file $file is missing"
+              exit 1
+            fi
+          done
+
+          # Проверка прав на исполнение
+          chmod +x start.sh
+
+          # Проверка Dockerfile
+          if ! grep -q "FROM python:3.9-slim" Dockerfile; then
+            echo "Error: Invalid Dockerfile base image"
+            exit 1
+          fi
+
       - name: Verify secrets
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -44,6 +88,23 @@ jobs:
             # Клонируем свежую версию из репозитория
             git fetch origin main
             git reset --hard origin/main
+            
+            # Проверяем содержимое конфигурационных файлов
+            echo "Checking config files..."
+            for file in config/logging.yaml config/config.yaml; do
+              if [ ! -s "$file" ]; then
+                echo "Error: $file is empty"
+                cat "$file"
+                exit 1
+              fi
+            done
+            
+            # Проверяем структуру logging.yaml
+            if ! grep -q "version: 1" config/logging.yaml; then
+              echo "Error: Invalid logging.yaml structure"
+              cat config/logging.yaml
+              exit 1
+            fi
             
             # Проверяем наличие всех необходимых файлов
             required_files=(
@@ -125,3 +186,31 @@ jobs:
           
           # Проверяем только основной сервис
           check_endpoint "http://${{ secrets.SSH_HOST }}:8080/health" "API" || exit 1
+
+            # Проверяем requirements.txt
+            echo "Checking requirements.txt..."
+            if ! grep -q "google-auth" requirements.txt || \
+               ! grep -q "flask" requirements.txt || \
+               ! grep -q "celery" requirements.txt; then
+              echo "Error: Missing core dependencies in requirements.txt"
+              cat requirements.txt
+              exit 1
+            fi
+            
+            # Проверяем start.sh
+            echo "Checking start.sh..."
+            if ! grep -q "gunicorn" start.sh || \
+               ! grep -q "mkdir -p /app/" start.sh; then
+              echo "Error: Invalid start.sh structure"
+              cat start.sh
+              exit 1
+            fi
+            
+            # Проверяем права на исполнение
+            chmod +x start.sh
+
+            # Устанавливаем права доступа
+            chmod -R 755 config/
+            chmod 644 config/*.yaml config/*.txt
+            chmod 644 requirements.txt
+            chmod 755 start.sh
