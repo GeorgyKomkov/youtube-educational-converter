@@ -89,7 +89,7 @@ class YouTubeAPI:
         """Загрузка видео с обработкой ошибок"""
         try:
             ydl_opts = {
-                'format': 'best[height<=720]',
+                'format': 'worst[height<=480]',
                 'outtmpl': output_path,
                 'quiet': True,
                 'no_warnings': True,

@@ -120,16 +120,13 @@ class VideoProcessor:
         self.audio_extractor = AudioExtractor(self.temp_dir)
         self.output_generator = OutputGenerator(self.output_dir)
         
-        # Инициализация Whisper с маленькой моделью
+        # Используем самую маленькую модель
         self.whisper_model = whisper.load_model("tiny")
 
     def process_video(self, video_path):
         try:
             # Ограничение использования памяти
             resource.setrlimit(resource.RLIMIT_AS, (1024 * 1024 * 1024, -1))  # 1GB
-            
-            # Используем маленькую модель Whisper
-            model = whisper.load_model("tiny")
             
             # Извлекаем аудио
             audio_extractor = AudioExtractor(self.config['temp_dir'])
@@ -142,7 +139,7 @@ class VideoProcessor:
                 
                 for i in range(0, len(audio), chunk_size * 16000):
                     chunk = audio[i:i + chunk_size * 16000]
-                    result = model.transcribe(chunk)
+                    result = self.whisper_model.transcribe(chunk)
                     results.append(result['text'])
                     
                     # Очистка памяти

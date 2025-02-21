@@ -88,7 +88,7 @@ app = Flask(__name__,
     template_folder='/app/templates'
 )
 app.config.update({
-    'MAX_CONTENT_LENGTH': 500 * 1024 * 1024,  # 500MB max-size
+    'MAX_CONTENT_LENGTH': 100 * 1024 * 1024,  # уменьшаем до 100MB
     'UPLOAD_FOLDER': '/app/temp'
 })
 
@@ -119,9 +119,9 @@ cleanup_lock = Lock()
 # Ограничение количества одновременных задач
 celery.conf.update(
     worker_max_tasks_per_child=1,
-    worker_max_memory_per_child=512*1024,  # 512MB
-    task_time_limit=3600,  # 1 час
-    worker_concurrency=1  # только 1 процесс
+    worker_max_memory_per_child=256*1024,  # уменьшаем до 256MB
+    task_time_limit=1800,
+    worker_concurrency=1
 )
 
 @celery.task(bind=True, max_retries=3)

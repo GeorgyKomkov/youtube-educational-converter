@@ -9,7 +9,7 @@ import yaml
 from pathlib import Path
 
 class FrameProcessor:
-    def __init__(self, output_dir, max_frames=20, mode='scenes', 
+    def __init__(self, output_dir, max_frames=10, mode='scenes', 
                  blip_enabled=True, max_caption_length=50):
         self.output_dir = Path(output_dir)
         self.max_frames = max_frames
