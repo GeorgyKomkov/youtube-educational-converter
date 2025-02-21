@@ -26,7 +26,7 @@ whisper>=1.0.0
 yt-dlp>=2023.3.4
 
 # Утилиты
-pyyaml>=6.0.0
+pyyaml>=6.0.0  # Важно для logging.config
 python-dotenv>=1.0.0
 requests>=2.31.0
 
@@ -42,3 +42,7 @@ apscheduler==3.10.1
 
 # Фиксированные версии для исправления конфликтов
 huggingface-hub==0.19.4
+
+# Логирование и мониторинг
+python-logging-config>=0.0.11
+prometheus-flask-exporter>=0.22.3

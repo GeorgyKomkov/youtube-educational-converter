@@ -213,6 +213,6 @@ jobs:
 
           # Устанавливаем права доступа
           chmod -R 755 config/
-          chmod 644 config/*.yaml config/*.txt
+          chmod 644 config/*.yaml
           chmod 644 requirements.txt
           chmod 755 start.sh
