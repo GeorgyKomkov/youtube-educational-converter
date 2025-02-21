@@ -38,6 +38,17 @@
             <div class="progress-bar"></div>
         </div>
 
+        <!-- Добавляем индикатор прогресса -->
+        <div id="conversion-progress" class="progress-container" style="display: none;">
+            <div class="progress-status">
+                <div class="spinner"></div>
+                <p>Идет конвертация видео в учебник...</p>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-bar-fill"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- Добавляем модальное окно для куки -->
         <div id="cookie-modal" class="modal">
             <div class="modal-content">
@@ -76,5 +87,52 @@
             // ... остальной код конвертации ...
         }
     </script>
+
+    <!-- Добавляем стили -->
+    <style>
+    .progress-container {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        text-align: center;
+        z-index: 1000;
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #3498db;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 15px;
+    }
+
+    .progress-bar {
+        width: 100%;
+        height: 10px;
+        background: #f3f3f3;
+        border-radius: 5px;
+        overflow: hidden;
+        margin-top: 10px;
+    }
+
+    .progress-fill {
+        width: 0%;
+        height: 100%;
+        background: #3498db;
+        transition: width 0.3s ease;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    </style>
 </body>
 </html> 
