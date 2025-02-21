@@ -35,6 +35,8 @@ async function convertVideo() {
     const urlInput = document.getElementById('video-url');
     const url = urlInput.value.trim();
 
+    console.log('Starting conversion for URL:', url); // Отладочный лог
+
     if (!url) {
         showAlert('Please enter a YouTube URL', 'error');
         return;
@@ -46,6 +48,7 @@ async function convertVideo() {
     }
 
     try {
+        console.log('Sending request to server...'); // Отладочный лог
         showStatus('Starting conversion...', 'info');
         
         // Начинаем конвертацию
@@ -58,7 +61,10 @@ async function convertVideo() {
             body: JSON.stringify({ url })
         });
 
+        console.log('Got response:', response); // Отладочный лог
+
         const data = await response.json();
+        console.log('Response data:', data); // Отладочный лог
 
         if (data.error) {
             showAlert(data.error, 'error');
@@ -69,6 +75,7 @@ async function convertVideo() {
         checkStatus(data.task_id);
 
     } catch (error) {
+        console.error('Error:', error); // Отладочный лог
         showAlert('Error starting conversion: ' + error, 'error');
     }
 }

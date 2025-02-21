@@ -171,13 +171,17 @@ def index():
 def convert_video():
     """API endpoint для конвертации видео"""
     try:
+        logger.info("Received conversion request")
         data = request.json
         if not data or 'url' not in data:
+            logger.warning("No URL provided")
             return jsonify({'error': 'No URL provided'}), 400
 
         # Создаем задачу
+        logger.info(f"Creating task for URL: {data['url']}")
         task = process_video_task.delay(data['url'])
         
+        logger.info(f"Task created with ID: {task.id}")
         return jsonify({
             'status': 'processing',
             'task_id': task.id
@@ -312,7 +316,7 @@ scheduler.start()
 
 # Запуск сервера метрик Prometheus
 try:
-    start_http_server(9090)
+    start_http_server(9091)
 except Exception as e:
     logger.error(f"Failed to start Prometheus server: {e}")
 
