@@ -125,3 +125,14 @@ class YouTubeAPI:
     def _load_api_key(self):
         """Загрузка API ключа"""
         return os.environ.get('YOUTUBE_API_KEY')
+
+    def _load_config(self):
+        """Загрузка конфигурации"""
+        try:
+            with open('config/config.yaml', 'r') as f:
+                import yaml
+                config = yaml.safe_load(f)
+                return config.get('youtube_api', {})
+        except Exception as e:
+            self.logger.error(f"Error loading config: {e}")
+            return {}

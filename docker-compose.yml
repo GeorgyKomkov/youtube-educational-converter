@@ -19,6 +19,8 @@ services:
       - ./videos:/app/videos
       - ./output:/app/output
       - ./logs:/app/logs
+      - ./temp:/app/temp
+      - ./cache:/app/cache
     environment:
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
       - REDIS_URL=redis://redis:6379/0

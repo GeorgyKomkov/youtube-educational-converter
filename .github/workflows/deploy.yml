@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
       - name: Verify project files
         run: |
@@ -187,30 +187,32 @@ jobs:
           # Проверяем только основной сервис
           check_endpoint "http://${{ secrets.SSH_HOST }}:8080/health" "API" || exit 1
 
-            # Проверяем requirements.txt
-            echo "Checking requirements.txt..."
-            if ! grep -q "google-auth" requirements.txt || \
-               ! grep -q "flask" requirements.txt || \
-               ! grep -q "celery" requirements.txt; then
-              echo "Error: Missing core dependencies in requirements.txt"
-              cat requirements.txt
-              exit 1
-            fi
-            
-            # Проверяем start.sh
-            echo "Checking start.sh..."
-            if ! grep -q "gunicorn" start.sh || \
-               ! grep -q "mkdir -p /app/" start.sh; then
-              echo "Error: Invalid start.sh structure"
-              cat start.sh
-              exit 1
-            fi
-            
-            # Проверяем права на исполнение
-            chmod +x start.sh
+      - name: Verify dependencies
+        run: |
+          # Проверяем requirements.txt
+          echo "Checking requirements.txt..."
+          if ! grep -q "google-auth" requirements.txt || \
+             ! grep -q "flask" requirements.txt || \
+             ! grep -q "celery" requirements.txt; then
+            echo "Error: Missing core dependencies in requirements.txt"
+            cat requirements.txt
+            exit 1
+          fi
+          
+          # Проверяем start.sh
+          echo "Checking start.sh..."
+          if ! grep -q "gunicorn" start.sh || \
+             ! grep -q "mkdir -p /app/" start.sh; then
+            echo "Error: Invalid start.sh structure"
+            cat start.sh
+            exit 1
+          fi
+          
+          # Проверяем права на исполнение
+          chmod +x start.sh
 
-            # Устанавливаем права доступа
-            chmod -R 755 config/
-            chmod 644 config/*.yaml config/*.txt
-            chmod 644 requirements.txt
-            chmod 755 start.sh
+          # Устанавливаем права доступа
+          chmod -R 755 config/
+          chmod 644 config/*.yaml config/*.txt
+          chmod 644 requirements.txt
+          chmod 755 start.sh
