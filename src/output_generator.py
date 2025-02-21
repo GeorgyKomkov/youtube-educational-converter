@@ -5,6 +5,8 @@ import shutil
 import subprocess
 from PIL import Image
 from pathlib import Path
+import os
+from sentence_transformers import SentenceTransformer
 
 class OutputGenerator:
     def __init__(self, output_dir):
