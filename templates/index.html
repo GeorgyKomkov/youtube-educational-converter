@@ -12,16 +12,6 @@
     <div class="container">
         <h1>YouTube Educational Converter</h1>
         
-        <!-- Секция для cookies -->
-        <div class="cookies-section">
-            <button onclick="exportYouTubeCookies()" class="btn btn-primary">
-                Экспорт YouTube Cookies
-            </button>
-            <small class="text-muted">
-                Необходимо для загрузки видео с ограничением по возрасту или приватных видео
-            </small>
-        </div>
-
         <!-- Форма конвертера -->
         <div class="converter-form">
             <div class="input-group">
@@ -46,6 +36,18 @@
         <!-- Прогресс -->
         <div class="progress-container" style="display: none;">
             <div class="progress-bar"></div>
+        </div>
+
+        <!-- Добавляем модальное окно для куки -->
+        <div id="cookie-modal" class="modal">
+            <div class="modal-content">
+                <h2>Использование cookies</h2>
+                <p>Этот сайт использует cookies для работы с YouTube. Продолжая использовать сайт, вы соглашаетесь с использованием cookies.</p>
+                <div class="modal-buttons">
+                    <button onclick="acceptCookies()" class="btn btn-primary">Принять</button>
+                    <button onclick="rejectCookies()" class="btn btn-secondary">Отклонить</button>
+                </div>
+            </div>
         </div>
     </div>
 
