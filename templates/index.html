@@ -21,7 +21,7 @@
         </form>
 
         <!-- Статус конвертации -->
-        <div id="status" role="status" aria-live="polite"></div>
+        <div id="status" class="status"></div>
 
         <!-- Прогресс -->
         <div class="progress-container" style="display: none;">
@@ -122,6 +122,27 @@
     @keyframes spin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
+    }
+
+    .status {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 4px;
+    }
+
+    .status-info {
+        background-color: #e3f2fd;
+        color: #1976d2;
+    }
+
+    .status-success {
+        background-color: #e8f5e9;
+        color: #2e7d32;
+    }
+
+    .status-error {
+        background-color: #ffebee;
+        color: #c62828;
     }
     </style>
 </body>

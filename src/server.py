@@ -23,6 +23,7 @@ import sys
 import json
 from apscheduler.schedulers.background import BackgroundScheduler
 import socket
+from celery.result import AsyncResult
 
 # Импортируем нужные модули
 from .youtube_api import YouTubeAPI
@@ -105,6 +106,18 @@ for directory in [VIDEO_DIR, OUTPUT_DIR, TEMP_DIR]:
 # Конфигурация Celery
 redis_url = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
 celery = Celery('tasks', broker=redis_url)
+celery.conf.update(
+    broker_url=redis_url,
+    result_backend=redis_url,
+    task_track_started=True,
+    task_serializer='json',
+    result_serializer='json',
+    accept_content=['json'],
+    worker_max_tasks_per_child=1,
+    worker_max_memory_per_child=256*1024,  # 256MB
+    task_time_limit=1800,  # 30 минут
+    worker_concurrency=1
+)
 redis_client = redis.from_url(redis_url, decode_responses=True)
 
 # Инициализация YouTube API
@@ -116,14 +129,6 @@ REQUEST_LATENCY = Histogram('request_latency_seconds', 'Request latency in secon
 
 # Блокировка для синхронизации
 cleanup_lock = Lock()
-
-# Ограничение количества одновременных задач
-celery.conf.update(
-    worker_max_tasks_per_child=1,
-    worker_max_memory_per_child=256*1024,  # уменьшаем до 256MB
-    task_time_limit=1800,
-    worker_concurrency=1
-)
 
 @celery.task(bind=True, max_retries=3)
 def process_video_task(self, video_url):
@@ -189,26 +194,42 @@ def process_video():
 @app.route('/status/<task_id>')
 def get_task_status(task_id):
     try:
-        task = process_video_task.AsyncResult(task_id)
-        response = {
-            'task_id': task_id,
-            'status': task.status,
-            'progress': 0
-        }
+        # Получаем задачу по ID
+        task = AsyncResult(task_id)
+        logger.info(f"Checking status for task {task_id}: {task.status}")
         
-        if task.status == 'SUCCESS':
-            response['status'] = 'completed'
-            response['progress'] = 100
-        elif task.status == 'FAILURE':
-            response['status'] = 'failed'
-            response['error'] = str(task.result)
-        elif task.status == 'PROCESSING':
-            response['progress'] = task.info.get('progress', 0) if task.info else 0
+        if task.state == 'PENDING':
+            response = {
+                'status': 'processing',
+                'progress': 0
+            }
+        elif task.state == 'SUCCESS':
+            response = {
+                'status': 'completed',
+                'progress': 100,
+                'result': task.result
+            }
+        elif task.state == 'FAILURE':
+            logger.error(f"Task {task_id} failed: {task.result}")
+            response = {
+                'status': 'failed',
+                'error': str(task.result)
+            }
+        else:
+            response = {
+                'status': 'processing',
+                'progress': task.info.get('progress', 0) if task.info else 0
+            }
             
+        logger.info(f"Status response for task {task_id}: {response}")
         return jsonify(response)
+        
     except Exception as e:
-        logger.error(f"Error checking task status: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.exception(f"Error checking task status: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
 
 @app.route('/api/set-cookies', methods=['POST'])
 def set_cookies():
