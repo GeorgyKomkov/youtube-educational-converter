@@ -45,26 +45,42 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             
-            # Обновляем конфигурацию
-            cat > config/config.yaml << 'EOL'
-            youtube_api:
-              api_key: ${{ secrets.YOUTUBE_API_KEY }}
-              client_secrets: '${{ secrets.YOUTUBE_CLIENT_SECRETS }}'
+            # Проверяем наличие всех необходимых файлов
+            required_files=(
+              "docker-compose.yml"
+              "Dockerfile"
+              "requirements.txt"
+              "start.sh"
+              "Procfile"
+              "config/logging.yaml"
+              "config/config.yaml"
+              "config/youtube.cookies"
+            )
             
-            redis:
-              url: redis://redis:6379/0
-              broker_url: redis://redis:6379/0
+            for file in "${required_files[@]}"; do
+              if [ ! -f "$file" ]; then
+                echo "Error: $file not found"
+                exit 1
+              fi
+            done
             
-            server:
-              workers: 2
-              model: tiny
-              max_video_size: 500
-              cleanup_threshold: 85
+            # Обновляем только секретные значения в config.yaml
+            sed -i "s|api_key:.*|api_key: ${{ secrets.YOUTUBE_API_KEY }}|g" config/config.yaml
+            sed -i "s|client_secrets:.*|client_secrets: '${{ secrets.YOUTUBE_CLIENT_SECRETS }}'|g" config/config.yaml
             
-            monitoring:
-              prometheus_port: 9090
+            # Создаем .env файл
+            cat > .env << 'EOL'
+            YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }}
+            REDIS_URL=redis://redis:6379/0
+            CELERY_BROKER_URL=redis://redis:6379/0
+            MAX_WORKERS=2
+            WHISPER_MODEL=tiny
+            MAX_VIDEO_SIZE=500
+            EMERGENCY_CLEANUP_THRESHOLD=85
+            PROMETHEUS_PORT=9090
+            GRAFANA_ADMIN_PASSWORD=admin
             EOL
-
+            
             # Очистка и перезапуск
             docker-compose down
             docker system prune -af --volumes
@@ -90,8 +106,8 @@ jobs:
           check_endpoint() {
             local url=$1
             local name=$2
-            local max_attempts=10  # Увеличиваем количество попыток
-            local wait_time=60    # Увеличиваем время ожидания
+            local max_attempts=10
+            local wait_time=60
             
             echo "Checking $name..."
             for i in $(seq 1 $max_attempts); do
