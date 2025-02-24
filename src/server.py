@@ -105,20 +105,37 @@ for directory in [VIDEO_DIR, OUTPUT_DIR, TEMP_DIR]:
 
 # Конфигурация Celery
 redis_url = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
-celery = Celery('tasks', broker=redis_url)
-celery.conf.update(
-    broker_url=redis_url,
-    result_backend=redis_url,
-    task_track_started=True,
-    task_serializer='json',
-    result_serializer='json',
-    accept_content=['json'],
-    worker_max_tasks_per_child=1,
-    worker_max_memory_per_child=256*1024,  # 256MB
-    task_time_limit=1800,  # 30 минут
-    worker_concurrency=1
+celery = Celery('tasks', 
+    broker=redis_url,
+    backend=redis_url  # Изменено с result_backend на backend
 )
+
+celery.conf.update({
+    'broker_url': redis_url,
+    'result_backend': redis_url,
+    'task_track_started': True,
+    'task_serializer': 'json',
+    'result_serializer': 'json',
+    'accept_content': ['json'],
+    'worker_max_tasks_per_child': 1,
+    'worker_max_memory_per_child': 256*1024,  # 256MB
+    'task_time_limit': 1800,  # 30 минут
+    'worker_concurrency': 1,
+    'broker_connection_retry': True,
+    'broker_connection_max_retries': 0,
+    'result_expires': 3600,  # Результаты хранятся 1 час
+})
+
+# Инициализация Redis клиента
 redis_client = redis.from_url(redis_url, decode_responses=True)
+
+# После инициализации Redis клиента
+try:
+    redis_client.ping()
+    logger.info("Successfully connected to Redis")
+except Exception as e:
+    logger.error(f"Failed to connect to Redis: {e}")
+    sys.exit(1)
 
 # Инициализация YouTube API
 youtube_api = YouTubeAPI()
@@ -133,11 +150,14 @@ cleanup_lock = Lock()
 @celery.task(bind=True, max_retries=3)
 def process_video_task(self, video_url):
     try:
+        logger.info(f"Starting video processing task for URL: {video_url}")
         processor = VideoProcessor(app.config)
-        return processor.process_video(video_url)
+        result = processor.process_video(video_url)
+        logger.info(f"Video processing completed: {result}")
+        return result
     except Exception as exc:
         logger.error(f"Error processing video: {exc}")
-        self.retry(exc=exc, countdown=60)
+        raise self.retry(exc=exc, countdown=60)
 
 def check_disk_space():
     """Проверка и очистка диска при необходимости"""
