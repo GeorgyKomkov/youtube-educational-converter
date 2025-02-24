@@ -10,6 +10,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 3
+    networks:
+      - app-network
 
   server:
     build:
@@ -29,13 +31,16 @@ services:
     environment:
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
       - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
       - app-network
 
@@ -49,11 +54,16 @@ services:
       - ./videos:/app/videos
       - ./output:/app/output
       - ./logs:/app/logs
+      - ./temp:/app/temp
+      - ./cache:/app/cache
     environment:
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
       - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
       - app-network
 
@@ -63,3 +73,4 @@ volumes:
 networks:
   app-network:
     driver: bridge
+    name: youtube_converter_network
