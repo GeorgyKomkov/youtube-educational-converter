@@ -129,11 +129,14 @@ jobs:
             sed -i "s|api_key:.*|api_key: ${{ secrets.YOUTUBE_API_KEY }}|g" config/config.yaml
             sed -i "s|client_secrets:.*|client_secrets: '${{ secrets.YOUTUBE_CLIENT_SECRETS }}'|g" config/config.yaml
             
-            # Создаем .env файл
+            # Обновляем .env файл с добавлением настроек Celery и Redis
             cat > .env << 'EOL'
             YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }}
             REDIS_URL=redis://redis:6379/0
             CELERY_BROKER_URL=redis://redis:6379/0
+            CELERY_RESULT_BACKEND=redis://redis:6379/0
+            CELERY_TASK_SERIALIZER=json
+            CELERY_RESULT_SERIALIZER=json
             MAX_WORKERS=2
             WHISPER_MODEL=tiny
             MAX_VIDEO_SIZE=500
@@ -148,17 +151,25 @@ jobs:
             docker-compose pull
             docker-compose up -d --build
             
-            # Ждем запуска контейнеров
+            # Ждем запуска контейнеров и проверяем их статус
             echo "Waiting for containers to start..."
             sleep 45
             
-            # Проверка статуса и логов
+            # Проверка статуса контейнеров
             if ! docker-compose ps | grep -q "Up"; then
               echo "Error: Containers failed to start"
               echo "Server logs:"
               docker-compose logs server
               echo "Worker logs:"
               docker-compose logs worker
+              echo "Redis logs:"
+              docker-compose logs redis
+              exit 1
+            fi
+            
+            # Проверка подключения к Redis
+            if ! docker-compose exec -T redis redis-cli ping | grep -q "PONG"; then
+              echo "Error: Redis is not responding"
               exit 1
             fi
 
@@ -184,7 +195,7 @@ jobs:
             return 1
           }
           
-          # Проверяем только основной сервис
+          # Проверяем основной сервис и Redis
           check_endpoint "http://${{ secrets.SSH_HOST }}:8080/health" "API" || exit 1
 
       - name: Verify dependencies
@@ -193,7 +204,8 @@ jobs:
           echo "Checking requirements.txt..."
           if ! grep -q "google-auth" requirements.txt || \
              ! grep -q "flask" requirements.txt || \
-             ! grep -q "celery" requirements.txt; then
+             ! grep -q "celery" requirements.txt || \
+             ! grep -q "redis" requirements.txt; then
             echo "Error: Missing core dependencies in requirements.txt"
             cat requirements.txt
             exit 1
