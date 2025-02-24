@@ -143,20 +143,33 @@ class VideoProcessor:
         """Download video from YouTube"""
         try:
             ydl_opts = {
-                'format': 'best',  # Выбираем лучшее качество
+                'format': 'best',
                 'outtmpl': str(self.temp_dir / '%(id)s.%(ext)s'),
                 'quiet': True,
                 'no_warnings': True,
+                # Добавляем настройки для обхода ограничений
+                'nocheckcertificate': True,
+                'ignoreerrors': True,
+                'extract_flat': False,
+                # Добавляем User-Agent
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
             }
             
+            logger.info(f"Downloading video from URL: {video_url}")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(video_url, download=True)
                 video_path = self.temp_dir / f"{info['id']}.{info['ext']}"
+                logger.info(f"Video downloaded successfully to: {video_path}")
                 return str(video_path)
                 
         except Exception as e:
             logger.error(f"Error downloading video: {e}")
-            raise RuntimeError(f"Failed to download video: {e}")
+            # Добавляем больше информации об ошибке
+            if hasattr(e, 'msg'):
+                logger.error(f"Error message: {e.msg}")
+            raise RuntimeError(f"Failed to download video: {str(e)}")
 
     def transcribe_audio(self, audio_path):
         try:

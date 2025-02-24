@@ -77,6 +77,7 @@ async function handleFormSubmit(event) {
     }
     
     const url = urlInput.value.trim();
+    console.log('Original URL:', url);
     
     // Проверка на пустой URL
     if (!url) {
@@ -88,6 +89,8 @@ async function handleFormSubmit(event) {
     const fixedUrl = url.startsWith('https://') ? url : 
                      url.startsWith('https:/') ? url.replace('https:/', 'https://') :
                      `https://${url.replace(/^\/+/, '')}`;
+                     
+    console.log('Fixed URL:', fixedUrl);
     
     try {
         showStatus('Начинаем обработку видео...', 'info');
