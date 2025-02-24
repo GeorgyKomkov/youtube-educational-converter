@@ -114,19 +114,30 @@ class VideoProcessor:
     def __init__(self, config):
         self.config = config
         try:
-            # Инициализация модели с обработкой ошибок
+            # Создаем временные директории если их нет
+            temp_dir = self.config.get('temp_dir', '/app/temp')
+            output_dir = self.config.get('output_dir', '/app/output')
+            
+            # Создаем директории с правильными правами
+            os.makedirs(temp_dir, exist_ok=True)
+            os.makedirs(output_dir, exist_ok=True)
+            os.chmod(temp_dir, 0o777)
+            os.chmod(output_dir, 0o777)
+            
+            logger.info(f"Directories created/checked: temp_dir={temp_dir}, output_dir={output_dir}")
+            
+            # Инициализация модели
             model_name = self.config.get('transcription', {}).get('model', 'tiny')
             logger.info(f"Loading whisper model: {model_name}")
             
-            # Используем правильный метод загрузки модели
             self.whisper_model = load_model(
                 name=model_name,
                 device="cuda" if torch.cuda.is_available() else "cpu"
             )
             logger.info("Whisper model loaded successfully")
         except Exception as e:
-            logger.error(f"Failed to load whisper model: {e}")
-            raise RuntimeError(f"Failed to initialize whisper model: {e}")
+            logger.error(f"Failed to initialize VideoProcessor: {e}")
+            raise RuntimeError(f"Initialization failed: {e}")
 
     def transcribe_audio(self, audio_path):
         try:
@@ -147,20 +158,27 @@ class VideoProcessor:
             if progress_callback:
                 progress_callback(0)
             
-            # Ограничение использования памяти
-            resource.setrlimit(resource.RLIMIT_AS, (1024 * 1024 * 1024, -1))  # 1GB
+            # Проверяем и логируем состояние директорий
+            temp_dir = self.config.get('temp_dir', '/app/temp')
+            logger.info(f"Checking temp directory: {temp_dir}")
+            logger.info(f"Temp directory exists: {os.path.exists(temp_dir)}")
+            logger.info(f"Temp directory permissions: {oct(os.stat(temp_dir).st_mode)[-3:]}")
             
             # Извлекаем аудио
+            logger.info("Starting audio extraction...")
             audio_extractor = AudioExtractor(self.config['temp_dir'])
             audio_path = audio_extractor.extract(video_url)
+            logger.info(f"Audio extracted to: {audio_path}")
             
             # Обработка чанками
             def process_in_chunks(audio_path, chunk_size=30):
+                logger.info(f"Processing audio in chunks: {audio_path}")
                 results = []
                 audio = whisper.load_audio(audio_path)
                 
                 for i in range(0, len(audio), chunk_size * 16000):
                     chunk = audio[i:i + chunk_size * 16000]
+                    logger.info(f"Processing chunk {i//16000}-{(i + chunk_size)//16000} seconds")
                     result = self.whisper_model.transcribe(chunk)
                     results.append(result['text'])
                     
@@ -173,10 +191,6 @@ class VideoProcessor:
             result = process_in_chunks(audio_path)
             
             # Обновляем прогресс
-            if progress_callback:
-                progress_callback(50)
-            
-            # Финальный прогресс
             if progress_callback:
                 progress_callback(100)
             
