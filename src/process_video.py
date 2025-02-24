@@ -9,6 +9,7 @@ from .audio_extractor import AudioExtractor
 from .frame_processor import FrameProcessor
 from .output_generator import OutputGenerator
 import whisper
+from whisper import load_model
 import logging.config
 import shutil
 import cv2
@@ -81,7 +82,7 @@ class WhisperModelCache:
     def get_model(cls, model_name, device):
         if cls._model is None:
             try:
-                cls._model = whisper.load_model(model_name, device=device)
+                cls._model = load_model(model_name, device=device)
             except Exception as e:
                 logger.error(f"Error loading Whisper model: {e}")
                 raise
@@ -111,19 +112,34 @@ def cleanup_temp(temp_dir):
 
 class VideoProcessor:
     def __init__(self, config):
-        # Получаем пути из конфигурации
-        paths_config = config.get('paths', {})
-        self.temp_dir = Path(paths_config.get('temp_dir', '/app/temp'))
-        self.output_dir = Path(paths_config.get('output_dir', '/app/output'))
-        self.videos_dir = Path(paths_config.get('videos_dir', '/app/videos'))
-        self.temp_dir.mkdir(exist_ok=True)
-        self.output_dir.mkdir(exist_ok=True)
-        self.logger = logging.getLogger(__name__)
-        self.audio_extractor = AudioExtractor(self.temp_dir)
-        self.output_generator = OutputGenerator(self.output_dir)
-        
-        # Используем самую маленькую модель
-        self.whisper_model = whisper.load_model("tiny")
+        self.config = config
+        try:
+            # Инициализация модели с обработкой ошибок
+            model_name = self.config.get('transcription', {}).get('model', 'tiny')
+            logger.info(f"Loading whisper model: {model_name}")
+            
+            # Используем правильный метод загрузки модели
+            self.whisper_model = load_model(
+                name=model_name,
+                device="cuda" if torch.cuda.is_available() else "cpu"
+            )
+            logger.info("Whisper model loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load whisper model: {e}")
+            raise RuntimeError(f"Failed to initialize whisper model: {e}")
+
+    def transcribe_audio(self, audio_path):
+        try:
+            logger.info(f"Starting transcription of {audio_path}")
+            # Загружаем аудио через whisper
+            audio = whisper.load_audio(audio_path)
+            # Транскрибируем
+            result = self.whisper_model.transcribe(audio)
+            logger.info("Transcription completed successfully")
+            return result["text"]
+        except Exception as e:
+            logger.error(f"Transcription failed: {e}")
+            raise RuntimeError(f"Failed to transcribe audio: {e}")
 
     def process_video(self, video_url, progress_callback=None):
         try:
@@ -135,7 +151,7 @@ class VideoProcessor:
             resource.setrlimit(resource.RLIMIT_AS, (1024 * 1024 * 1024, -1))  # 1GB
             
             # Извлекаем аудио
-            audio_extractor = AudioExtractor(self.temp_dir)
+            audio_extractor = AudioExtractor(self.config['temp_dir'])
             audio_path = audio_extractor.extract(video_url)
             
             # Обработка чанками
@@ -177,7 +193,7 @@ class VideoProcessor:
             video_size = os.path.getsize(video_path)
             required_space = video_size * 3  # 3x размер видео
             
-            free_space = shutil.disk_usage(self.temp_dir).free
+            free_space = shutil.disk_usage(self.config['temp_dir']).free
             if free_space < required_space:
                 raise RuntimeError(
                     f"Insufficient disk space. Required: {required_space/1024/1024:.1f}MB, "
