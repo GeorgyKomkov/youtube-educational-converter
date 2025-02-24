@@ -68,20 +68,24 @@ async function handleYouTubeCookies() {
 
 async function handleFormSubmit(event) {
     event.preventDefault();
+    const form = event.target;
+    const url = form.querySelector('input[type="url"]').value.trim();
     
-    const urlInput = document.getElementById('video-url');
-    const url = urlInput.value.trim();
+    // Fix URL format if needed
+    const fixedUrl = url.startsWith('https://') ? url : 
+                     url.startsWith('https:/') ? url.replace('https:/', 'https://') :
+                     `https://${url.replace(/^\/+/, '')}`;
     
     // Показываем индикатор загрузки
     showStatus('Начинаем обработку видео...', 'info');
     
     try {
-        const response = await fetch('/process_video', {
+        const response = await fetch('/convert', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ url })
+            body: JSON.stringify({ url: fixedUrl })
         });
 
         if (!response.ok) {
