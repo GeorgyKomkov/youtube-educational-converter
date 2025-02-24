@@ -150,19 +150,37 @@ cleanup_lock = Lock()
 @celery.task(bind=True)
 def process_video_task(self, video_url):
     try:
-        # Инициализация прогресса
-        self.update_state(state='PROGRESS', meta={'progress': 0})
+        # Проверяем и создаем директории
+        temp_dir = config.get('temp_dir', '/app/temp')
+        output_dir = config.get('output_dir', '/app/output')
         
-        processor = VideoProcessor(app.config)
-        # Обработка видео с обновлением прогресса
-        result = processor.process_video(video_url, progress_callback=lambda p: self.update_state(
-            state='PROGRESS',
-            meta={'progress': p}
-        ))
+        logger.info(f"Task directories: temp={temp_dir}, output={output_dir}")
+        
+        # Проверяем существование директорий
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir, exist_ok=True)
+            logger.info(f"Created temp directory: {temp_dir}")
+            
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+            logger.info(f"Created output directory: {output_dir}")
+            
+        # Устанавливаем права
+        os.chmod(temp_dir, 0o777)
+        os.chmod(output_dir, 0o777)
+        
+        processor = VideoProcessor(config)
+        result = processor.process_video(
+            video_url,
+            progress_callback=lambda p: self.update_state(
+                state='PROGRESS',
+                meta={'progress': p}
+            )
+        )
         
         return result
     except Exception as e:
-        logger.exception(f"Error processing video: {e}")
+        logger.exception(f"Task failed: {e}")
         raise
 
 def check_disk_space():

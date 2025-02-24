@@ -107,80 +107,27 @@ async function handleFormSubmit(event) {
 
 async function checkConversionStatus(taskId) {
     try {
-        // Показываем индикатор прогресса при начале проверки
-        document.getElementById('conversion-progress').style.display = 'block';
-        let retryCount = 0;
-        const maxRetries = 3;
-        
-        while (true) {
-            try {
-                console.log('Checking status for task:', taskId);
-                
-                const response = await fetch('/status/' + taskId, {
-                    headers: {
-                        'Accept': 'application/json'
-                    }
-                });
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Server returned ${response.status}: ${errorText}`);
-                }
-
-                const data = await response.json();
-                console.log('Status response:', data);
-                
-                // Обновляем прогресс-бар
-                const progressBar = document.getElementById('progress-bar-fill');
-                if (progressBar) {
-                    progressBar.style.width = `${data.progress || 0}%`;
-                }
-                
-                if (data.status === 'completed') {
-                    showStatus('Conversion completed!', 'success');
-                    document.getElementById('conversion-progress').style.display = 'none';
-                    
-                    if (data.result && data.result.download_url) {
-                        window.location.href = data.result.download_url;
-                    }
-                    break;
-                    
-                } else if (data.status === 'failed') {
-                    const errorMessage = data.error || 'Conversion failed';
-                    console.error('Task failed:', errorMessage);
-                    throw new Error(errorMessage);
-                } else if (data.status === 'error') {
-                    // Добавляем обработку статуса error
-                    const errorMessage = data.message || 'An error occurred during conversion';
-                    console.error('Task error:', errorMessage);
-                    throw new Error(errorMessage);
-                } else {
-                    showStatus(`Converting... ${data.progress || 0}%`, 'info');
-                }
-                
-                // Сбрасываем счетчик повторов при успешном запросе
-                retryCount = 0;
-                
-            } catch (error) {
-                console.error('Error in status check iteration:', error);
-                retryCount++;
-                
-                if (retryCount >= maxRetries) {
-                    throw new Error(`Failed after ${maxRetries} retries: ${error.message}`);
-                }
-                
-                // Ждем перед повторной попыткой
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                continue;
+        const response = await fetch('/status/' + taskId, {
+            headers: {
+                'Accept': 'application/json'
             }
-            
-            // Ждем перед следующей проверкой
-            await new Promise(resolve => setTimeout(resolve, 2000));
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Server returned ${response.status}`);
         }
+
+        const data = await response.json();
+        console.log('Status response:', data);
+
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        return data;
     } catch (error) {
-        console.error('Error checking status:', error);
-        showAlert('Error checking conversion status: ' + error.message, 'error');
-        document.getElementById('conversion-progress').style.display = 'none';
+        console.error('Error in status check:', error);
+        throw error;
     }
 }
 
