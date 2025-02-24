@@ -37,22 +37,22 @@ parallel_processing:
   queue_size: 2
 
 server:
-  host: "0.0.0.0"
+  host: '0.0.0.0'
   port: 8080
   workers: 2
   threads: 4
   timeout: 120
 
 redis:
-  url: "redis://redis:6379/0"
-  max_connections: 10
-  socket_timeout: 5
+  host: 'redis'
+  port: 6379
+  db: 0
 
 celery:
-  concurrency: 2
-  task_timeout: 3600
-  max_retries: 3
-  retry_delay: 300
+  broker_url: 'redis://redis:6379/0'
+  result_backend: 'redis://redis:6379/0'
+  task_serializer: 'json'
+  result_serializer: 'json'
 
 youtube_api:
   credentials_file: "client_secrets.json"
@@ -122,3 +122,10 @@ whisper:
 cleanup:
   temp_lifetime: 3600
   cache_size_mb: 1000
+
+paths:
+  temp_dir: '/app/temp'
+  output_dir: '/app/output'
+  videos_dir: '/app/videos'
+  cache_dir: '/app/cache'
+  logs_dir: '/app/logs'

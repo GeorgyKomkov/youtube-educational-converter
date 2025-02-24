@@ -111,9 +111,11 @@ def cleanup_temp(temp_dir):
 
 class VideoProcessor:
     def __init__(self, config):
-        self.config = config
-        self.temp_dir = Path(config['temp_dir'])
-        self.output_dir = Path(config['output_dir'])
+        # Получаем пути из конфигурации
+        paths_config = config.get('paths', {})
+        self.temp_dir = Path(paths_config.get('temp_dir', '/app/temp'))
+        self.output_dir = Path(paths_config.get('output_dir', '/app/output'))
+        self.videos_dir = Path(paths_config.get('videos_dir', '/app/videos'))
         self.temp_dir.mkdir(exist_ok=True)
         self.output_dir.mkdir(exist_ok=True)
         self.logger = logging.getLogger(__name__)
@@ -129,7 +131,7 @@ class VideoProcessor:
             resource.setrlimit(resource.RLIMIT_AS, (1024 * 1024 * 1024, -1))  # 1GB
             
             # Извлекаем аудио
-            audio_extractor = AudioExtractor(self.config['temp_dir'])
+            audio_extractor = AudioExtractor(self.temp_dir)
             audio_path = audio_extractor.extract(video_path)
             
             # Обработка чанками
