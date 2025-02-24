@@ -15,6 +15,7 @@ import shutil
 import cv2
 import resource
 import gc
+import yt_dlp  # Добавим импорт
 
 # Настройка логирования
 def setup_logging():
@@ -113,18 +114,17 @@ def cleanup_temp(temp_dir):
 class VideoProcessor:
     def __init__(self, config):
         self.config = config
+        self.temp_dir = Path(config['temp_dir'])
+        self.temp_dir.mkdir(exist_ok=True)
         try:
             # Создаем временные директории если их нет
-            temp_dir = self.config.get('temp_dir', '/app/temp')
             output_dir = self.config.get('output_dir', '/app/output')
             
             # Создаем директории с правильными правами
-            os.makedirs(temp_dir, exist_ok=True)
             os.makedirs(output_dir, exist_ok=True)
-            os.chmod(temp_dir, 0o777)
             os.chmod(output_dir, 0o777)
             
-            logger.info(f"Directories created/checked: temp_dir={temp_dir}, output_dir={output_dir}")
+            logger.info(f"Directories created/checked: temp_dir={self.temp_dir}, output_dir={output_dir}")
             
             # Инициализация модели
             model_name = self.config.get('transcription', {}).get('model', 'tiny')
@@ -138,6 +138,25 @@ class VideoProcessor:
         except Exception as e:
             logger.error(f"Failed to initialize VideoProcessor: {e}")
             raise RuntimeError(f"Initialization failed: {e}")
+
+    def download_video(self, video_url):
+        """Download video from YouTube"""
+        try:
+            ydl_opts = {
+                'format': 'best',  # Выбираем лучшее качество
+                'outtmpl': str(self.temp_dir / '%(id)s.%(ext)s'),
+                'quiet': True,
+                'no_warnings': True,
+            }
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(video_url, download=True)
+                video_path = self.temp_dir / f"{info['id']}.{info['ext']}"
+                return str(video_path)
+                
+        except Exception as e:
+            logger.error(f"Error downloading video: {e}")
+            raise RuntimeError(f"Failed to download video: {e}")
 
     def transcribe_audio(self, audio_path):
         try:
@@ -154,6 +173,15 @@ class VideoProcessor:
 
     def process_video(self, video_url, progress_callback=None):
         try:
+            # Download video first
+            video_path = self.download_video(video_url)
+            logger.info(f"Video downloaded to: {video_path}")
+
+            # Process the downloaded video
+            audio_path = extract_audio(video_path, self.config)
+            if not audio_path:
+                raise RuntimeError("Failed to extract audio")
+
             # Начальный прогресс
             if progress_callback:
                 progress_callback(0)
@@ -168,16 +196,9 @@ class VideoProcessor:
             logger.info(f"Processing video URL: {video_url}")
             
             # Проверяем и логируем состояние директорий
-            temp_dir = self.config.get('temp_dir', '/app/temp')
-            logger.info(f"Checking temp directory: {temp_dir}")
-            logger.info(f"Temp directory exists: {os.path.exists(temp_dir)}")
-            logger.info(f"Temp directory permissions: {oct(os.stat(temp_dir).st_mode)[-3:]}")
-            
-            # Извлекаем аудио
-            logger.info("Starting audio extraction...")
-            audio_extractor = AudioExtractor(self.config['temp_dir'])
-            audio_path = audio_extractor.extract(video_url)
-            logger.info(f"Audio extracted to: {audio_path}")
+            logger.info(f"Checking temp directory: {self.temp_dir}")
+            logger.info(f"Temp directory exists: {os.path.exists(self.temp_dir)}")
+            logger.info(f"Temp directory permissions: {oct(os.stat(self.temp_dir).st_mode)[-3:]}")
             
             # Обработка чанками
             def process_in_chunks(audio_path, chunk_size=30):
@@ -216,7 +237,7 @@ class VideoProcessor:
             video_size = os.path.getsize(video_path)
             required_space = video_size * 3  # 3x размер видео
             
-            free_space = shutil.disk_usage(self.config['temp_dir']).free
+            free_space = shutil.disk_usage(self.temp_dir).free
             if free_space < required_space:
                 raise RuntimeError(
                     f"Insufficient disk space. Required: {required_space/1024/1024:.1f}MB, "
