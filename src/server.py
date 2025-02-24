@@ -147,17 +147,23 @@ REQUEST_LATENCY = Histogram('request_latency_seconds', 'Request latency in secon
 # Блокировка для синхронизации
 cleanup_lock = Lock()
 
-@celery.task(bind=True, max_retries=3)
+@celery.task(bind=True)
 def process_video_task(self, video_url):
     try:
-        logger.info(f"Starting video processing task for URL: {video_url}")
+        # Инициализация прогресса
+        self.update_state(state='PROGRESS', meta={'progress': 0})
+        
         processor = VideoProcessor(app.config)
-        result = processor.process_video(video_url)
-        logger.info(f"Video processing completed: {result}")
+        # Обработка видео с обновлением прогресса
+        result = processor.process_video(video_url, progress_callback=lambda p: self.update_state(
+            state='PROGRESS',
+            meta={'progress': p}
+        ))
+        
         return result
-    except Exception as exc:
-        logger.error(f"Error processing video: {exc}")
-        raise self.retry(exc=exc, countdown=60)
+    except Exception as e:
+        logger.exception(f"Error processing video: {e}")
+        raise
 
 def check_disk_space():
     """Проверка и очистка диска при необходимости"""
@@ -215,27 +221,33 @@ def process_video():
 def get_task_status(task_id):
     try:
         # Получаем задачу по ID
-        task = AsyncResult(task_id)
-        logger.info(f"Checking status for task {task_id}: {task.status}")
+        task = AsyncResult(task_id, app=celery)
+        logger.info(f"Checking status for task {task_id}: {task.state}")
         
+        response = {
+            'status': 'processing',
+            'progress': 0
+        }
+
         if task.state == 'PENDING':
             response = {
                 'status': 'processing',
                 'progress': 0
             }
         elif task.state == 'SUCCESS':
+            result = task.get()  # Получаем результат задачи
             response = {
                 'status': 'completed',
                 'progress': 100,
-                'result': task.result
+                'result': result
             }
         elif task.state == 'FAILURE':
-            logger.error(f"Task {task_id} failed: {task.result}")
             response = {
                 'status': 'failed',
-                'error': str(task.result)
+                'error': str(task.result),  # Получаем информацию об ошибке
+                'progress': 0
             }
-        else:
+        elif task.state == 'PROGRESS':
             response = {
                 'status': 'processing',
                 'progress': task.info.get('progress', 0) if task.info else 0

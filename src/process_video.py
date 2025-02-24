@@ -125,14 +125,18 @@ class VideoProcessor:
         # Используем самую маленькую модель
         self.whisper_model = whisper.load_model("tiny")
 
-    def process_video(self, video_path):
+    def process_video(self, video_url, progress_callback=None):
         try:
+            # Начальный прогресс
+            if progress_callback:
+                progress_callback(0)
+            
             # Ограничение использования памяти
             resource.setrlimit(resource.RLIMIT_AS, (1024 * 1024 * 1024, -1))  # 1GB
             
             # Извлекаем аудио
             audio_extractor = AudioExtractor(self.temp_dir)
-            audio_path = audio_extractor.extract(video_path)
+            audio_path = audio_extractor.extract(video_url)
             
             # Обработка чанками
             def process_in_chunks(audio_path, chunk_size=30):
@@ -150,10 +154,22 @@ class VideoProcessor:
                     
                 return " ".join(results)
                 
-            return process_in_chunks(audio_path)
+            result = process_in_chunks(audio_path)
             
+            # Обновляем прогресс
+            if progress_callback:
+                progress_callback(50)
+            
+            # Финальный прогресс
+            if progress_callback:
+                progress_callback(100)
+            
+            return {
+                'status': 'success',
+                'result': result
+            }
         except Exception as e:
-            logger.error(f"Error in video processing: {e}")
+            logger.exception(f"Error processing video: {e}")
             raise
 
     def _check_disk_space(self, video_path):
