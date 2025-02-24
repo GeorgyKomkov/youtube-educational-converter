@@ -107,21 +107,39 @@ async function handleFormSubmit(event) {
 
 async function checkConversionStatus(taskId) {
     try {
+        // Показываем индикатор прогресса при начале проверки
+        document.getElementById('conversion-progress').style.display = 'block';
+        
         while (true) {
-            const response = await fetch(`/status/${taskId}`);
+            console.log('Checking status for task:', taskId); // Добавляем лог
+            
+            const response = await fetch('/status/' + taskId, {
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}: ${await response.text()}`);
+            }
+
             const data = await response.json();
+            console.log('Status response:', data); // Добавляем лог
             
             // Обновляем прогресс-бар
             const progressBar = document.getElementById('progress-bar-fill');
-            progressBar.style.width = `${data.progress}%`;
+            if (progressBar) {
+                progressBar.style.width = `${data.progress || 0}%`;
+            }
             
             if (data.status === 'completed') {
+                showStatus('Conversion completed!', 'success');
                 // Скрываем индикатор прогресса
                 document.getElementById('conversion-progress').style.display = 'none';
-                showStatus('Conversion completed!', 'success');
                 
-                // Скачиваем PDF
-                window.location.href = `/download/${taskId}`;
+                if (data.result && data.result.download_url) {
+                    window.location.href = data.result.download_url;
+                }
                 break;
                 
             } else if (data.status === 'failed') {
