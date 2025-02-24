@@ -71,9 +71,10 @@ async function handleFormSubmit(event) {
     
     const urlInput = document.getElementById('video-url');
     const url = urlInput.value.trim();
-
-    console.log('Form submitted with URL:', url);
-
+    
+    // Показываем индикатор загрузки
+    showStatus('Начинаем обработку видео...', 'info');
+    
     try {
         const response = await fetch('/process_video', {
             method: 'POST',
@@ -83,51 +84,50 @@ async function handleFormSubmit(event) {
             body: JSON.stringify({ url })
         });
 
-        console.log('Server response status:', response.status);
-        
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Server error:', errorText);
             throw new Error(`Server error: ${response.status}`);
         }
 
         const data = await response.json();
-        console.log('Server response data:', data);
         
         if (data.task_id) {
-            await checkConversionStatus(data.task_id);
+            // Запускаем периодическую проверку статуса
+            startStatusCheck(data.task_id);
         } else {
             throw new Error('No task ID received');
         }
     } catch (error) {
         console.error('Error:', error);
-        showAlert('Error: ' + error.message);
+        showAlert('Error: ' + error.message, 'error');
     }
 }
 
-async function checkConversionStatus(taskId) {
+async function startStatusCheck(taskId) {
     try {
-        const response = await fetch('/status/' + taskId, {
-            headers: {
-                'Accept': 'application/json'
+        while (true) {
+            const response = await fetch('/status/' + taskId);
+            const data = await response.json();
+            
+            console.log('Status check:', data);
+            
+            // Обновляем статус на странице
+            if (data.status === 'processing') {
+                showStatus(`Конвертация видео: ${data.progress || 0}%`, 'info');
+            } else if (data.status === 'completed') {
+                showStatus('Конвертация завершена!', 'success');
+                // Здесь можно добавить код для отображения результата
+                break;
+            } else if (data.status === 'failed') {
+                showStatus('Ошибка при конвертации', 'error');
+                break;
             }
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Server returned ${response.status}`);
+            
+            // Ждем 2 секунды перед следующей проверкой
+            await new Promise(resolve => setTimeout(resolve, 2000));
         }
-
-        const data = await response.json();
-        console.log('Status response:', data);
-
-        if (data.error) {
-            throw new Error(data.error);
-        }
-
-        return data;
     } catch (error) {
-        console.error('Error in status check:', error);
-        throw error;
+        console.error('Status check error:', error);
+        showStatus('Ошибка при проверке статуса', 'error');
     }
 }
 
@@ -149,9 +149,12 @@ function showAlert(message, type) {
     }, 5000);
 }
 
-function showStatus(message, type) {
+function showStatus(message, type = 'info') {
     const statusDiv = document.getElementById('status');
+    if (!statusDiv) return;
+    
     statusDiv.textContent = message;
-    statusDiv.className = `status status-${type}`;
+    statusDiv.className = `alert alert-${type}`;
+    statusDiv.style.display = 'block';
 }
 

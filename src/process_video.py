@@ -158,6 +158,15 @@ class VideoProcessor:
             if progress_callback:
                 progress_callback(0)
             
+            # Проверка и корректировка URL
+            if not video_url.startswith('https://'):
+                if video_url.startswith('https:/'):
+                    video_url = video_url.replace('https:/', 'https://')
+                else:
+                    video_url = f'https://{video_url.lstrip("/")}' 
+                
+            logger.info(f"Processing video URL: {video_url}")
+            
             # Проверяем и логируем состояние директорий
             temp_dir = self.config.get('temp_dir', '/app/temp')
             logger.info(f"Checking temp directory: {temp_dir}")

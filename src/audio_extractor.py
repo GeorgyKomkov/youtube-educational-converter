@@ -81,7 +81,7 @@ class AudioExtractor:
             return str(self.temp_dir / f"{Path(video_path).stem}.wav")
             
         except Exception as e:
-            self.logger.error(f"Error in audio extraction: {str(e)}")
+            logger.error(f"Error in audio extraction: {str(e)}")
             self._cleanup_temp_files()
             raise
             
