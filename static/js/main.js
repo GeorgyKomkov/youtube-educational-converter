@@ -68,19 +68,31 @@ async function handleYouTubeCookies() {
 
 async function handleFormSubmit(event) {
     event.preventDefault();
-    const form = event.target;
-    const url = form.querySelector('input[type="url"]').value.trim();
+    
+    const urlInput = document.getElementById('video-url');
+    if (!urlInput) {
+        console.error('Input element not found');
+        showStatus('Ошибка: форма не найдена', 'error');
+        return;
+    }
+    
+    const url = urlInput.value.trim();
+    
+    // Проверка на пустой URL
+    if (!url) {
+        showStatus('Пожалуйста, введите URL видео', 'error');
+        return;
+    }
     
     // Fix URL format if needed
     const fixedUrl = url.startsWith('https://') ? url : 
                      url.startsWith('https:/') ? url.replace('https:/', 'https://') :
                      `https://${url.replace(/^\/+/, '')}`;
     
-    // Показываем индикатор загрузки
-    showStatus('Начинаем обработку видео...', 'info');
-    
     try {
-        const response = await fetch('/convert', {
+        showStatus('Начинаем обработку видео...', 'info');
+        
+        const response = await fetch('/process_video', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -95,14 +107,13 @@ async function handleFormSubmit(event) {
         const data = await response.json();
         
         if (data.task_id) {
-            // Запускаем периодическую проверку статуса
             startStatusCheck(data.task_id);
         } else {
             throw new Error('No task ID received');
         }
     } catch (error) {
         console.error('Error:', error);
-        showAlert('Error: ' + error.message, 'error');
+        showStatus('Ошибка при отправке запроса', 'error');
     }
 }
 
