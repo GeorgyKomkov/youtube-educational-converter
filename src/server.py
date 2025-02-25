@@ -225,6 +225,23 @@ def process_video():
             return jsonify({'error': 'No URL provided'}), 400
             
         url = data.get('url')
+        
+        # Проверяем наличие и загружаем куки
+        cookie_file = os.path.join('config', 'youtube.cookies')
+        if not os.path.exists(cookie_file):
+            return jsonify({'error': 'YouTube cookies not found'}), 401
+            
+        try:
+            with open(cookie_file, 'r') as f:
+                cookies = json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load cookies file: {e}")
+            return jsonify({'error': 'Failed to load YouTube cookies'}), 500
+            
+        # Инициализируем YouTube API с куки
+        youtube_api.set_cookies(cookies)
+        
+        # Запускаем задачу
         task = process_video_task.delay(url)
         
         return jsonify({

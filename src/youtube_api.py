@@ -15,7 +15,7 @@ class YouTubeAPI:
         self._setup_http_session()
         self._setup_redis()
         self._setup_api()
-        self._setup_cookies()
+        self.cookies = None
         
     def _setup_http_session(self):
         """Настройка HTTP сессии с retry и timeout"""
@@ -117,14 +117,15 @@ class YouTubeAPI:
     def download_video(self, video_url, output_path):
         """Загрузка видео с обработкой ошибок"""
         try:
-            cookie_file = os.path.join('config', 'youtube.cookies')
-            
+            if not self.cookies:
+                raise ValueError("YouTube cookies not set")
+                
             ydl_opts = {
                 'format': 'worst[height<=480]',
                 'outtmpl': output_path,
                 'quiet': True,
                 'no_warnings': True,
-                'cookiefile': cookie_file if os.path.exists(cookie_file) else None
+                'cookiefile': self.cookies
             }
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -176,3 +177,7 @@ class YouTubeAPI:
         except Exception as e:
             self.logger.error(f"Error loading config: {e}")
             return {}
+
+    def set_cookies(self, cookies):
+        """Установка куки для работы с YouTube"""
+        self.cookies = cookies
