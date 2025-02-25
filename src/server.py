@@ -24,6 +24,7 @@ import json
 from apscheduler.schedulers.background import BackgroundScheduler
 import socket
 from celery.result import AsyncResult
+from flask_cors import CORS
 
 # Импортируем нужные модули
 from .youtube_api import YouTubeAPI
@@ -453,6 +454,13 @@ def check_auth():
     except Exception as e:
         logger.error(f"Error checking auth: {e}")
         return jsonify({'authorized': False, 'error': str(e)})
+
+CORS(app, supports_credentials=True, resources={
+    r"/api/*": {
+        "origins": ["https://www.youtube.com"],
+        "allow_credentials": True
+    }
+})
 
 if __name__ == "__main__":
     app.run(

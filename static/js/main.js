@@ -237,33 +237,55 @@ function showStatus(message, type = 'info') {
 }
 
 // Добавляем новые функции для работы с куки YouTube
-function getYoutubeCookies() {
-    const cookies = document.cookie.split(';')
-        .filter(cookie => 
-            cookie.trim().startsWith('CONSENT=') || 
-            cookie.trim().startsWith('VISITOR_INFO1_LIVE=') ||
-            cookie.trim().startsWith('LOGIN_INFO=')
-        )
-        .map(cookie => {
-            const [name, value] = cookie.trim().split('=');
-            return {
-                name: name,
-                value: value,
-                domain: '.youtube.com',
-                path: '/'
-            };
+async function getYoutubeCookies() {
+    try {
+        // Сначала делаем запрос к YouTube для получения куки
+        await fetch('https://www.youtube.com', {
+            credentials: 'include'  // Важно! Это позволит получить куки
         });
-    console.log('Found YouTube cookies:', cookies);
-    return cookies;
+        
+        console.log('All cookies:', document.cookie); // Отладочный вывод
+        
+        // Получаем все куки
+        const allCookies = document.cookie.split(';').map(c => c.trim());
+        console.log('Available cookies:', allCookies);
+        
+        // Фильтруем только YouTube куки
+        const youtubeCookies = allCookies
+            .filter(cookie => {
+                const name = cookie.split('=')[0].trim();
+                return name.startsWith('YT') || 
+                       name.startsWith('CONSENT') || 
+                       name.startsWith('VISITOR_INFO1_LIVE') ||
+                       name.startsWith('LOGIN_INFO');
+            })
+            .map(cookie => {
+                const [name, ...values] = cookie.split('=');
+                return {
+                    name: name.trim(),
+                    value: values.join('='), // На случай если значение содержит =
+                    domain: '.youtube.com',
+                    path: '/'
+                };
+            });
+            
+        console.log('Found YouTube cookies:', youtubeCookies);
+        return youtubeCookies;
+        
+    } catch (error) {
+        console.error('Error getting YouTube cookies:', error);
+        return [];
+    }
 }
 
 async function saveCookies() {
     try {
-        const cookies = getYoutubeCookies();
-        console.log('Sending cookies to server:', cookies);
+        const cookies = await getYoutubeCookies();
+        console.log('Cookies to save:', cookies);
 
         if (cookies.length === 0) {
             console.warn('No YouTube cookies found');
+            showAlert('Пожалуйста, авторизуйтесь на YouTube', 'warning');
             return false;
         }
 
@@ -276,12 +298,17 @@ async function saveCookies() {
             credentials: 'same-origin'
         });
 
-        const responseData = await response.json();
-        console.log('Server response:', responseData);
+        const data = await response.json();
+        console.log('Server response:', data);
 
-        return response.ok;
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to save cookies');
+        }
+
+        return true;
     } catch (error) {
         console.error('Error saving cookies:', error);
+        showAlert('Ошибка при сохранении cookies', 'error');
         return false;
     }
 }
