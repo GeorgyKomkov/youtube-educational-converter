@@ -1,15 +1,6 @@
 // Проверка и показ модального окна при загрузке
 document.addEventListener('DOMContentLoaded', async function() {
-    // Проверяем авторизацию на YouTube
-    const isYouTubeAvailable = await checkYouTubeAuth();
-    
-    if (!isYouTubeAvailable) {
-        showAlert('Для работы сервиса необходимо быть авторизованным на YouTube. Пожалуйста, откройте YouTube в новой вкладке и войдите в аккаунт', 'warning');
-        // Добавляем кнопку для быстрого перехода на YouTube
-        addYouTubeAuthButton();
-    }
-
-    // Остальная инициализация
+    // Показываем модальное окно о куки только если пользователь еще не принял их
     if (!localStorage.getItem('cookiesAccepted')) {
         showCookieModal();
     }
@@ -45,7 +36,12 @@ function rejectCookies() {
 
 async function handleYouTubeCookies() {
     try {
-        // Получаем все куки YouTube
+        // Пытаемся получить куки через fetch запрос к YouTube
+        const response = await fetch('https://www.youtube.com', {
+            credentials: 'include'
+        });
+        
+        // Получаем все куки
         const ytCookies = document.cookie
             .split(';')
             .map(cookie => cookie.trim())
@@ -55,44 +51,40 @@ async function handleYouTubeCookies() {
                 cookie.startsWith('VISITOR_INFO1_LIVE') ||
                 cookie.startsWith('LOGIN_INFO')
             );
-        
+
         if (ytCookies.length === 0) {
-            console.warn('No YouTube cookies found');
-            showAlert('YouTube cookies не найдены', 'warning');
-            return;
+            showAlert('Пожалуйста, авторизуйтесь на YouTube', 'warning');
+            return false;
         }
 
-        // Формируем объект для отправки
-        const cookiesData = {
-            cookies: ytCookies.map(cookie => {
-                const [name, value] = cookie.split('=');
-                return {
-                    name: name.trim(),
-                    value: value,
-                    domain: '.youtube.com',
-                    path: '/'
-                };
-            })
-        };
-
-        const response = await fetch('/save_cookies', {
+        // Отправляем куки на сервер
+        const response2 = await fetch('/save_cookies', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(cookiesData),
-            credentials: 'same-origin'  // Важно для работы с куки
+            body: JSON.stringify({
+                cookies: ytCookies.map(cookie => {
+                    const [name, value] = cookie.split('=');
+                    return {
+                        name: name.trim(),
+                        value: value,
+                        domain: '.youtube.com',
+                        path: '/'
+                    };
+                })
+            }),
+            credentials: 'same-origin'
         });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to save cookies');
+        if (!response2.ok) {
+            throw new Error('Failed to save cookies');
         }
 
-        console.log('YouTube cookies saved successfully');
+        return true;
     } catch (error) {
         console.error('Error handling YouTube cookies:', error);
-        showAlert('Ошибка при сохранении cookies: ' + error.message, 'error');
+        return false;
     }
 }
 
@@ -144,16 +136,15 @@ function addYouTubeAuthButton() {
 async function handleFormSubmit(event) {
     event.preventDefault();
     
-    // Проверяем авторизацию перед отправкой
-    const isYouTubeAvailable = await checkYouTubeAuth();
-    if (!isYouTubeAvailable) {
-        showAlert('Необходима авторизация на YouTube', 'error');
-        return;
-    }
-
     const videoUrl = document.getElementById('video-url').value;
     if (!videoUrl) {
         showAlert('Введите URL видео', 'warning');
+        return;
+    }
+
+    // Проверяем куки перед отправкой
+    const hasYouTubeCookies = await handleYouTubeCookies();
+    if (!hasYouTubeCookies) {
         return;
     }
 
@@ -202,7 +193,6 @@ function showAlert(message, type) {
     
     container.insertBefore(alertDiv, container.firstChild);
     
-    // Автоматически скрываем через 5 секунд
     setTimeout(() => {
         alertDiv.remove();
     }, 5000);
