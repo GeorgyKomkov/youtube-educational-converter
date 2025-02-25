@@ -5,6 +5,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         showCookieModal();
     }
     
+    // Сначала пробуем сохранить куки YouTube
+    await saveCookies();
+    
     const form = document.getElementById('video-form');
     if (form) {
         form.addEventListener('submit', handleFormSubmit);
@@ -231,5 +234,55 @@ function showStatus(message, type = 'info') {
     statusDiv.textContent = message;
     statusDiv.className = `alert alert-${type}`;
     statusDiv.style.display = 'block';
+}
+
+// Добавляем новые функции для работы с куки YouTube
+function getYoutubeCookies() {
+    const cookies = document.cookie.split(';')
+        .filter(cookie => 
+            cookie.trim().startsWith('CONSENT=') || 
+            cookie.trim().startsWith('VISITOR_INFO1_LIVE=') ||
+            cookie.trim().startsWith('LOGIN_INFO=')
+        )
+        .map(cookie => {
+            const [name, value] = cookie.trim().split('=');
+            return {
+                domain: '.youtube.com',
+                name: name,
+                value: value,
+                path: '/',
+                secure: true
+            };
+        });
+    return cookies;
+}
+
+async function saveCookies() {
+    try {
+        const cookies = getYoutubeCookies();
+        if (cookies.length === 0) {
+            console.log('No YouTube cookies found');
+            return false;
+        }
+
+        const response = await fetch('/api/save-cookies', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ cookies }),
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to save cookies');
+        }
+
+        console.log('YouTube cookies saved successfully');
+        return true;
+    } catch (error) {
+        console.error('Error saving cookies:', error);
+        return false;
+    }
 }
 

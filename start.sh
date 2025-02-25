@@ -12,10 +12,10 @@ cleanup() {
 trap cleanup EXIT
 
 # Создаем необходимые директории
-mkdir -p /app/temp /app/output /app/videos /app/logs /app/cache
+mkdir -p /app/temp /app/output /app/videos /app/logs /app/cache /app/config
 
 # Устанавливаем права
-chmod -R 777 /app/temp /app/output /app/videos /app/logs /app/cache
+chmod -R 777 /app/temp /app/output /app/videos /app/logs /app/cache /app/config
 
 # Проверяем наличие необходимых переменных окружения
 required_vars=("YOUTUBE_API_KEY")

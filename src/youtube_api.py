@@ -7,6 +7,8 @@ import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 import re
+import json
+from pathlib import Path
 
 class YouTubeAPI:
     def __init__(self):
@@ -15,7 +17,7 @@ class YouTubeAPI:
         self._setup_http_session()
         self._setup_redis()
         self._setup_api()
-        self.cookies = None
+        self.cookies = self._load_cookies()
         
     def _setup_http_session(self):
         """Настройка HTTP сессии с retry и timeout"""
@@ -121,11 +123,12 @@ class YouTubeAPI:
 
             # Настройки для yt-dlp
             ydl_opts = {
-                'format': 'best[height<=480]',
+                'format': 'best',
                 'outtmpl': output_path,
                 'quiet': True,
                 'no_warnings': True,
-                'extract_flat': False
+                'cookiefile': 'config/youtube.cookies' if self.cookies else None,
+                'nocheckcertificate': True
             }
 
             # Добавляем куки, если они есть
@@ -186,3 +189,15 @@ class YouTubeAPI:
         except Exception as e:
             self.logger.error(f"Error loading config: {e}")
             return {}
+
+    def _load_cookies(self):
+        """Загрузка cookies из файла"""
+        try:
+            cookie_path = Path('config/youtube.cookies')
+            if cookie_path.exists():
+                with open(cookie_path, 'r') as f:
+                    return json.load(f)
+            return None
+        except Exception as e:
+            self.logger.error(f"Error loading cookies: {e}")
+            return None

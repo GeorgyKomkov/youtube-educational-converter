@@ -295,38 +295,41 @@ def set_cookies():
         logger.error(f"Error setting cookies: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/save_cookies', methods=['POST'])
+@app.route('/api/save-cookies', methods=['POST'])
 def save_cookies():
-    """Сохранение куки YouTube"""
+    """Сохранение куки YouTube в файл"""
     try:
-        cookies = request.json.get('cookies', [])
-        if not cookies:
-            logger.warning("No cookies provided in request")
+        data = request.get_json()
+        if not data or 'cookies' not in data:
             return jsonify({'error': 'No cookies provided'}), 400
             
-        # Убедимся, что директория config существует
-        config_dir = os.path.join(os.path.dirname(__file__), '..', 'config')
-        os.makedirs(config_dir, exist_ok=True)
+        cookies = data.get('cookies')
         
-        cookie_file = os.path.join(config_dir, 'youtube.cookies')
+        # Проверяем наличие необходимых куки
+        required_cookies = ['CONSENT', 'VISITOR_INFO1_LIVE', 'LOGIN_INFO']
+        has_all_cookies = all(
+            any(cookie.get('name') == req for cookie in cookies)
+            for req in required_cookies
+        )
+        
+        if not has_all_cookies:
+            return jsonify({'error': 'Missing required cookies'}), 400
+            
+        # Создаем директорию config если её нет
+        os.makedirs('config', exist_ok=True)
         
         # Сохраняем куки в файл
-        try:
-            with open(cookie_file, 'w') as f:
-                json.dump(cookies, f, indent=2)
+        with open('config/youtube.cookies', 'w') as f:
+            json.dump(cookies, f)
             
-            # Устанавливаем правильные права доступа
-            os.chmod(cookie_file, 0o644)
+        # Сохраняем куки в сессию
+        session['youtube_cookies'] = cookies
             
-            logger.info("Cookies saved successfully")
-            return jsonify({'status': 'success'})
-        except IOError as e:
-            logger.error(f"Failed to write cookies file: {e}")
-            return jsonify({'error': 'Failed to save cookies'}), 500
-            
+        return jsonify({'success': True})
+        
     except Exception as e:
-        logger.error(f"Error handling YouTube cookies: {e}")
-        return jsonify({'error': 'Failed to save cookies'}), 500
+        logger.error(f"Error saving cookies: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/static/<path:path>')
 def send_static(path):
