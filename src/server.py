@@ -148,33 +148,23 @@ REQUEST_LATENCY = Histogram('request_latency_seconds', 'Request latency in secon
 cleanup_lock = Lock()
 
 @celery.task(bind=True)
-def process_video_task(self, url):
+def process_video_task(self, url, cookies=None):
     """Задача для обработки видео"""
     try:
         logger.info(f"Starting video processing task for URL: {url}")
         
-        # Получаем куки из сессии
-        cookies = session.get('youtube_cookies')
-        if cookies:
-            youtube_api.set_session_cookies(cookies)
-            logger.info("YouTube cookies set from session")
-        
         # Инициализация VideoProcessor
-        try:
-            processor = VideoProcessor(config)
-            logger.info("VideoProcessor initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize VideoProcessor: {e}")
-            raise
+        processor = VideoProcessor(config)
+        
+        # Устанавливаем куки в youtube_api
+        if cookies:
+            processor.youtube_api.set_session_cookies(cookies)
+            logger.info("YouTube cookies set from task parameters")
         
         # Обработка видео
-        try:
-            result = processor.process_video(url)
-            logger.info(f"Video processing completed: {result}")
-            return result
-        except Exception as e:
-            logger.error(f"Video processing failed: {e}")
-            raise
+        result = processor.process_video(url)
+        logger.info(f"Video processing completed: {result}")
+        return result
             
     except Exception as e:
         logger.exception(f"Task failed with error: {e}")
@@ -221,36 +211,25 @@ def index():
 def process_video():
     """Обработка запроса на конвертацию видео"""
     try:
-        # Проверка входных данных
         data = request.get_json()
-        if not data:
-            logger.error("No JSON data in request")
-            return jsonify({'error': 'No data provided'}), 400
-            
-        if 'url' not in data:
+        if not data or 'url' not in data:
             logger.error("No URL in request data")
             return jsonify({'error': 'No URL provided'}), 400
             
         url = data.get('url')
         logger.info(f"Received video processing request for URL: {url}")
         
-        # Проверка URL
-        if not url.startswith(('http://', 'https://')):
-            logger.error(f"Invalid URL format: {url}")
-            return jsonify({'error': 'Invalid URL format'}), 400
-            
-        # Запуск задачи
-        try:
-            task = process_video_task.delay(url)
-            logger.info(f"Task created with ID: {task.id}")
-            
-            return jsonify({
-                'task_id': task.id,
-                'status': 'processing'
-            })
-        except Exception as e:
-            logger.error(f"Failed to create task: {e}")
-            return jsonify({'error': 'Failed to start processing'}), 500
+        # Получаем куки из сессии здесь, в контексте запроса
+        cookies = session.get('youtube_cookies')
+        
+        # Запускаем задачу, передавая куки как параметр
+        task = process_video_task.delay(url=url, cookies=cookies)
+        logger.info(f"Task created with ID: {task.id}")
+        
+        return jsonify({
+            'task_id': task.id,
+            'status': 'processing'
+        })
             
     except Exception as e:
         logger.exception(f"Error processing request: {e}")
