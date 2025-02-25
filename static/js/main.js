@@ -239,18 +239,17 @@ function showStatus(message, type = 'info') {
 // Добавляем новые функции для работы с куки YouTube
 async function getYoutubeCookies() {
     try {
-        // Сначала делаем запрос к YouTube для получения куки
+        // Делаем запрос к YouTube в режиме no-cors
         await fetch('https://www.youtube.com', {
-            credentials: 'include'  // Важно! Это позволит получить куки
+            mode: 'no-cors',  // Добавляем этот параметр
+            credentials: 'include'
         });
-        
-        console.log('All cookies:', document.cookie); // Отладочный вывод
         
         // Получаем все куки
         const allCookies = document.cookie.split(';').map(c => c.trim());
         console.log('Available cookies:', allCookies);
         
-        // Фильтруем только YouTube куки
+        // Фильтруем YouTube куки
         const youtubeCookies = allCookies
             .filter(cookie => {
                 const name = cookie.split('=')[0].trim();
@@ -263,7 +262,7 @@ async function getYoutubeCookies() {
                 const [name, ...values] = cookie.split('=');
                 return {
                     name: name.trim(),
-                    value: values.join('='), // На случай если значение содержит =
+                    value: values.join('='),
                     domain: '.youtube.com',
                     path: '/'
                 };

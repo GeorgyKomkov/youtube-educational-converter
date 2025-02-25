@@ -455,10 +455,11 @@ def check_auth():
         logger.error(f"Error checking auth: {e}")
         return jsonify({'authorized': False, 'error': str(e)})
 
-CORS(app, supports_credentials=True, resources={
+CORS(app, resources={
     r"/api/*": {
-        "origins": ["https://www.youtube.com"],
-        "allow_credentials": True
+        "origins": "*",  # Разрешаем все источники для тестирования
+        "supports_credentials": True,  # Поддержка credentials
+        "methods": ["GET", "POST", "OPTIONS"]  # Разрешенные методы
     }
 })
 
