@@ -6,6 +6,7 @@ import yt_dlp
 import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+import json
 
 class YouTubeAPI:
     def __init__(self):
@@ -14,6 +15,7 @@ class YouTubeAPI:
         self._setup_http_session()
         self._setup_redis()
         self._setup_api()
+        self._setup_cookies()
         
     def _setup_http_session(self):
         """Настройка HTTP сессии с retry и timeout"""
@@ -58,6 +60,33 @@ class YouTubeAPI:
             self.logger.error(f"YouTube API setup failed: {e}")
             raise
 
+    def _setup_cookies(self):
+        """Настройка и проверка cookies"""
+        try:
+            cookie_file = os.path.join('config', 'youtube.cookies')
+            if not os.path.exists(cookie_file):
+                self.logger.warning("Cookie file not found")
+                return
+                
+            # Проверяем содержимое файла
+            with open(cookie_file, 'r') as f:
+                cookies = json.load(f)
+                
+            if not cookies:
+                self.logger.warning("No cookies found in file")
+                return
+                
+            # Проверяем наличие необходимых куки
+            required_cookies = ['CONSENT', 'VISITOR_INFO1_LIVE']
+            missing = [cookie for cookie in required_cookies 
+                      if not any(c['name'] == cookie for c in cookies)]
+                      
+            if missing:
+                self.logger.warning(f"Missing required cookies: {missing}")
+                
+        except Exception as e:
+            self.logger.error(f"Error setting up cookies: {e}")
+
     def get_video_info(self, video_id, timeout=(5, 30)):
         """Получение информации о видео с таймаутом"""
         try:
@@ -88,21 +117,32 @@ class YouTubeAPI:
     def download_video(self, video_url, output_path):
         """Загрузка видео с обработкой ошибок"""
         try:
+            cookie_file = os.path.join('config', 'youtube.cookies')
+            
             ydl_opts = {
                 'format': 'worst[height<=480]',
                 'outtmpl': output_path,
                 'quiet': True,
                 'no_warnings': True,
-                'cookiefile': 'config/cookies.txt'
+                'cookiefile': cookie_file if os.path.exists(cookie_file) else None
             }
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 try:
+                    # Проверяем доступность видео перед загрузкой
+                    info = ydl.extract_info(video_url, download=False)
+                    if info.get('age_limit', 0) > 0:
+                        raise ValueError("Age-restricted video requires authentication")
+                    
+                    # Загружаем видео
                     ydl.download([video_url])
-                except Exception as e:
-                    self.logger.error(f"yt-dlp download failed: {e}")
+                    
+                except yt_dlp.utils.DownloadError as e:
+                    if "Cookie" in str(e):
+                        self.logger.error("Cookie-related download error")
+                        raise ValueError("Failed to authenticate with YouTube")
                     raise
-                
+                    
             if not os.path.exists(output_path):
                 raise FileNotFoundError(f"Download completed but file not found: {output_path}")
                 

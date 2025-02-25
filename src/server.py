@@ -297,17 +297,20 @@ def set_cookies():
 
 @app.route('/save_cookies', methods=['POST'])
 def save_cookies():
+    """Сохранение куки YouTube"""
     try:
-        cookies = request.json
-        
-        # Сохраняем в config/youtube.cookies
+        cookies = request.json.get('cookies', [])
+        if not cookies:
+            return jsonify({'error': 'No cookies provided'}), 400
+            
+        # Сохраняем куки в файл
         with open('config/youtube.cookies', 'w') as f:
             json.dump(cookies, f, indent=2)
             
         return jsonify({'status': 'success'})
     except Exception as e:
-        app.logger.error(f"Failed to save cookies: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        logger.error(f"Error saving cookies: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/static/<path:path>')
 def send_static(path):

