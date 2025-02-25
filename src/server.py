@@ -148,7 +148,7 @@ REQUEST_LATENCY = Histogram('request_latency_seconds', 'Request latency in secon
 cleanup_lock = Lock()
 
 @celery.task(bind=True)
-def process_video_task(self, video_url):
+def process_video_task(self, video_url, cookie_file):
     try:
         # Проверяем и создаем директории
         temp_dir = config.get('temp_dir', '/app/temp')
@@ -172,6 +172,7 @@ def process_video_task(self, video_url):
         processor = VideoProcessor(config)
         result = processor.process_video(
             video_url,
+            cookie_file,
             progress_callback=lambda p: self.update_state(
                 state='PROGRESS',
                 meta={'progress': p}
@@ -226,28 +227,37 @@ def process_video():
             
         url = data.get('url')
         
-        # Проверяем наличие и загружаем куки
-        cookie_file = os.path.join('config', 'youtube.cookies')
+        # Используем абсолютный путь к файлу куки
+        cookie_file = os.path.join('/app/config', 'youtube.cookies')
         if not os.path.exists(cookie_file):
+            logger.error(f"Cookie file not found at {cookie_file}")
             return jsonify({'error': 'YouTube cookies not found'}), 401
             
         try:
             with open(cookie_file, 'r') as f:
                 cookies = json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to load cookies file: {e}")
-            return jsonify({'error': 'Failed to load YouTube cookies'}), 500
+                
+            # Создаем временный файл с куки в формате Netscape
+            temp_cookie_file = os.path.join(TEMP_DIR, 'cookies.txt')
+            with open(temp_cookie_file, 'w') as f:
+                for cookie in cookies:
+                    f.write(f".youtube.com\tTRUE\t{cookie['path']}\tTRUE\t{cookie.get('expirationDate', '0')}\t{cookie['name']}\t{cookie['value']}\n")
             
-        # Инициализируем YouTube API с куки
-        youtube_api.set_cookies(cookies)
-        
-        # Запускаем задачу
-        task = process_video_task.delay(url)
-        
-        return jsonify({
-            'task_id': task.id,
-            'status': 'processing'
-        })
+            # Инициализируем YouTube API с путем к файлу куки
+            youtube_api = YouTubeAPI()
+            youtube_api.set_cookies(temp_cookie_file)
+            
+            # Запускаем задачу
+            task = process_video_task.delay(url, temp_cookie_file)
+            
+            return jsonify({
+                'task_id': task.id,
+                'status': 'processing'
+            })
+        except Exception as e:
+            logger.error(f"Failed to process cookies: {e}")
+            return jsonify({'error': 'Failed to process YouTube cookies'}), 500
+            
     except Exception as e:
         logger.error(f"Error processing video request: {e}")
         return jsonify({'error': str(e)}), 500
