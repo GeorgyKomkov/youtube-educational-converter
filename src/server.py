@@ -298,37 +298,55 @@ def set_cookies():
 @app.route('/api/save-cookies', methods=['POST'])
 def save_cookies():
     """Сохранение куки YouTube в файл"""
+    logger.info("=== Starting save-cookies request ===")
     try:
         data = request.get_json()
+        logger.info(f"Received cookies request data: {data is not None}")
+        
         if not data or 'cookies' not in data:
+            logger.error("No cookies in request data")
             return jsonify({'error': 'No cookies provided'}), 400
             
         cookies = data.get('cookies')
-        
+        if not cookies:
+            logger.error("Empty cookies array")
+            return jsonify({'error': 'Empty cookies'}), 400
+
         # Проверяем наличие необходимых куки
         required_cookies = ['CONSENT', 'VISITOR_INFO1_LIVE', 'LOGIN_INFO']
-        has_all_cookies = all(
-            any(cookie.get('name') == req for cookie in cookies)
-            for req in required_cookies
-        )
+        found_cookies = [cookie['name'] for cookie in cookies]
+        logger.info(f"Found cookies: {found_cookies}")
         
-        if not has_all_cookies:
-            return jsonify({'error': 'Missing required cookies'}), 400
-            
-        # Создаем директорию config если её нет
-        os.makedirs('config', exist_ok=True)
-        
+        missing_cookies = [name for name in required_cookies if name not in found_cookies]
+        if missing_cookies:
+            logger.error(f"Missing required cookies: {missing_cookies}")
+            return jsonify({'error': f'Missing required cookies: {missing_cookies}'}), 400
+
         # Сохраняем куки в файл
-        with open('config/youtube.cookies', 'w') as f:
-            json.dump(cookies, f)
+        cookie_file = os.path.join('config', 'youtube.cookies')
+        try:
+            with open(cookie_file, 'w') as f:
+                json.dump(cookies, f, indent=2)
+            logger.info(f"Cookies saved to {cookie_file}")
             
-        # Сохраняем куки в сессию
-        session['youtube_cookies'] = cookies
-            
-        return jsonify({'success': True})
+            # Проверяем, что файл создался
+            if os.path.exists(cookie_file):
+                logger.info(f"Cookie file created successfully, size: {os.path.getsize(cookie_file)} bytes")
+            else:
+                raise FileNotFoundError("Cookie file was not created")
+                
+        except Exception as e:
+            logger.error(f"Error writing cookie file: {e}")
+            return jsonify({'error': f'Failed to save cookies: {str(e)}'}), 500
+
+        return jsonify({
+            'success': True,
+            'message': 'Cookies saved successfully',
+            'cookies_found': found_cookies
+        })
         
     except Exception as e:
-        logger.error(f"Error saving cookies: {e}")
+        logger.error(f"Error in save-cookies: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/static/<path:path>')

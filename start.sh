@@ -11,10 +11,10 @@ cleanup() {
 # Регистрируем функцию очистки
 trap cleanup EXIT
 
-# Создаем необходимые директории
+# Создаем необходимые директории (добавляем config в существующий список)
 mkdir -p /app/temp /app/output /app/videos /app/logs /app/cache /app/config
 
-# Устанавливаем права
+# Устанавливаем права (добавляем config в существующий список)
 chmod -R 777 /app/temp /app/output /app/videos /app/logs /app/cache /app/config
 
 # Проверяем наличие необходимых переменных окружения

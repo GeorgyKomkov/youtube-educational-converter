@@ -247,21 +247,23 @@ function getYoutubeCookies() {
         .map(cookie => {
             const [name, value] = cookie.trim().split('=');
             return {
-                domain: '.youtube.com',
                 name: name,
                 value: value,
-                path: '/',
-                secure: true
+                domain: '.youtube.com',
+                path: '/'
             };
         });
+    console.log('Found YouTube cookies:', cookies);
     return cookies;
 }
 
 async function saveCookies() {
     try {
         const cookies = getYoutubeCookies();
+        console.log('Sending cookies to server:', cookies);
+
         if (cookies.length === 0) {
-            console.log('No YouTube cookies found');
+            console.warn('No YouTube cookies found');
             return false;
         }
 
@@ -274,12 +276,10 @@ async function saveCookies() {
             credentials: 'same-origin'
         });
 
-        if (!response.ok) {
-            throw new Error('Failed to save cookies');
-        }
+        const responseData = await response.json();
+        console.log('Server response:', responseData);
 
-        console.log('YouTube cookies saved successfully');
-        return true;
+        return response.ok;
     } catch (error) {
         console.error('Error saving cookies:', error);
         return false;
