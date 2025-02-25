@@ -1,15 +1,20 @@
 // Проверка и показ модального окна при загрузке
-document.addEventListener('DOMContentLoaded', function() {
-    if (!localStorage.getItem('cookiesAccepted')) {
-        showCookieModal();
-    } else {
-        // Если куки приняты, запускаем фоновый процесс
-        handleYouTubeCookies();
+document.addEventListener('DOMContentLoaded', async function() {
+    // Проверяем авторизацию на YouTube
+    const isYouTubeAvailable = await checkYouTubeAuth();
+    
+    if (!isYouTubeAvailable) {
+        showAlert('Для работы сервиса необходимо быть авторизованным на YouTube. Пожалуйста, откройте YouTube в новой вкладке и войдите в аккаунт', 'warning');
+        // Добавляем кнопку для быстрого перехода на YouTube
+        addYouTubeAuthButton();
     }
 
-    // Ищем форму по id
-    const form = document.getElementById('video-form');
+    // Остальная инициализация
+    if (!localStorage.getItem('cookiesAccepted')) {
+        showCookieModal();
+    }
     
+    const form = document.getElementById('video-form');
     if (form) {
         form.addEventListener('submit', handleFormSubmit);
     } else {
@@ -91,58 +96,68 @@ async function handleYouTubeCookies() {
     }
 }
 
+async function checkYouTubeAuth() {
+    try {
+        // Пробуем получить куки YouTube
+        const ytCookies = document.cookie
+            .split(';')
+            .map(cookie => cookie.trim())
+            .filter(cookie => 
+                cookie.startsWith('YT') || 
+                cookie.startsWith('CONSENT') || 
+                cookie.startsWith('VISITOR_INFO1_LIVE') ||
+                cookie.startsWith('LOGIN_INFO')
+            );
+
+        // Если есть хотя бы базовые куки
+        if (ytCookies.length > 0) {
+            // Сразу сохраняем их
+            await handleYouTubeCookies();
+            return true;
+        }
+        
+        return false;
+    } catch (error) {
+        console.error('Error checking YouTube auth:', error);
+        return false;
+    }
+}
+
+function addYouTubeAuthButton() {
+    const container = document.querySelector('.container');
+    const authButton = document.createElement('a');
+    authButton.href = 'https://www.youtube.com';
+    authButton.target = '_blank';
+    authButton.className = 'btn btn-primary';
+    authButton.textContent = 'Войти на YouTube';
+    authButton.style.marginBottom = '20px';
+    
+    // Добавляем кнопку после предупреждения
+    const alert = container.querySelector('.alert');
+    if (alert) {
+        alert.after(authButton);
+    } else {
+        container.prepend(authButton);
+    }
+}
+
 async function handleFormSubmit(event) {
     event.preventDefault();
     
-    const urlInput = document.getElementById('video-url');
-    if (!urlInput) {
-        console.error('Input element not found');
-        showStatus('Ошибка: форма не найдена', 'error');
+    // Проверяем авторизацию перед отправкой
+    const isYouTubeAvailable = await checkYouTubeAuth();
+    if (!isYouTubeAvailable) {
+        showAlert('Необходима авторизация на YouTube', 'error');
         return;
     }
-    
-    const url = urlInput.value.trim();
-    console.log('Original URL:', url);
-    
-    // Проверка на пустой URL
-    if (!url) {
-        showStatus('Пожалуйста, введите URL видео', 'error');
+
+    const videoUrl = document.getElementById('video-url').value;
+    if (!videoUrl) {
+        showAlert('Введите URL видео', 'warning');
         return;
     }
-    
-    // Fix URL format if needed
-    const fixedUrl = url.startsWith('https://') ? url : 
-                     url.startsWith('https:/') ? url.replace('https:/', 'https://') :
-                     `https://${url.replace(/^\/+/, '')}`;
-                     
-    console.log('Fixed URL:', fixedUrl);
-    
-    try {
-        showStatus('Начинаем обработку видео...', 'info');
-        
-        const response = await fetch('/process_video', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ url: fixedUrl })
-        });
 
-        if (!response.ok) {
-            throw new Error(`Server error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        
-        if (data.task_id) {
-            startStatusCheck(data.task_id);
-        } else {
-            throw new Error('No task ID received');
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        showStatus('Ошибка при отправке запроса', 'error');
-    }
+    // Продолжаем обработку формы...
 }
 
 async function startStatusCheck(taskId) {
