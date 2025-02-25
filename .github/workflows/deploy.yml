@@ -35,7 +35,6 @@ jobs:
             "src/audio_extractor.py"
             "src/__init__.py"
             "prometheus/prometheus.yml"
-            "config/youtube.cookies"
             "config/logging.yaml"
             "config/config.yaml"
           )
@@ -115,7 +114,6 @@ jobs:
               "Procfile"
               "config/logging.yaml"
               "config/config.yaml"
-              "config/youtube.cookies"
             )
             
             for file in "${required_files[@]}"; do
