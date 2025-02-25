@@ -153,6 +153,12 @@ def process_video_task(self, url):
     try:
         logger.info(f"Starting video processing task for URL: {url}")
         
+        # Получаем куки из сессии
+        cookies = session.get('youtube_cookies')
+        if cookies:
+            youtube_api.set_session_cookies(cookies)
+            logger.info("YouTube cookies set from session")
+        
         # Инициализация VideoProcessor
         try:
             processor = VideoProcessor(config)
@@ -172,7 +178,6 @@ def process_video_task(self, url):
             
     except Exception as e:
         logger.exception(f"Task failed with error: {e}")
-        # Возвращаем ошибку в формате, который ожидает Celery
         return {
             'status': 'error',
             'error': str(e)

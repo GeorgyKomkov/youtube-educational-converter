@@ -6,7 +6,7 @@ import yt_dlp
 import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
-import json
+import re
 
 class YouTubeAPI:
     def __init__(self):
@@ -44,48 +44,23 @@ class YouTubeAPI:
             self.redis_client = None
             
     def _setup_api(self):
-        """Инициализация YouTube API"""
+        """Настройка YouTube API"""
         try:
             api_key = self._load_api_key()
             if not api_key:
                 raise ValueError("YouTube API key not found")
-                
+            
+            self.api_key = api_key  # Сохраняем API ключ
             self.youtube = build(
                 'youtube', 
                 'v3', 
                 developerKey=api_key,
                 cache_discovery=False
             )
+            self.logger.info("YouTube API initialized successfully")
         except Exception as e:
-            self.logger.error(f"YouTube API setup failed: {e}")
+            self.logger.error(f"Failed to initialize YouTube API: {e}")
             raise
-
-    def _setup_cookies(self):
-        """Настройка и проверка cookies"""
-        try:
-            cookie_file = os.path.join('config', 'youtube.cookies')
-            if not os.path.exists(cookie_file):
-                self.logger.warning("Cookie file not found")
-                return
-                
-            # Проверяем содержимое файла
-            with open(cookie_file, 'r') as f:
-                cookies = json.load(f)
-                
-            if not cookies:
-                self.logger.warning("No cookies found in file")
-                return
-                
-            # Проверяем наличие необходимых куки
-            required_cookies = ['CONSENT', 'VISITOR_INFO1_LIVE']
-            missing = [cookie for cookie in required_cookies 
-                      if not any(c['name'] == cookie for c in cookies)]
-                      
-            if missing:
-                self.logger.warning(f"Missing required cookies: {missing}")
-                
-        except Exception as e:
-            self.logger.error(f"Error setting up cookies: {e}")
 
     def get_video_info(self, video_id, timeout=(5, 30)):
         """Получение информации о видео с таймаутом"""
@@ -114,44 +89,78 @@ class YouTubeAPI:
             self.logger.error(f"Error getting video info: {e}")
             raise
 
-    def download_video(self, video_url, output_path):
-        """Загрузка видео с обработкой ошибок"""
+    def set_session_cookies(self, cookies):
+        """Установка куки из сессии"""
+        if not cookies:
+            self.logger.warning("No cookies provided in session")
+            return
+        self.cookies = cookies
+        self.logger.info("Session cookies set successfully")
+
+    def download_video(self, url, output_path):
+        """Загрузка видео с использованием yt-dlp"""
         try:
-            if not self.cookies:
-                raise ValueError("YouTube cookies not set")
+            # Проверяем видео через API
+            video_id = self._extract_video_id(url)
+            if not video_id:
+                raise ValueError("Invalid YouTube URL")
+
+            # Проверяем доступность видео через API
+            try:
+                video_info = self.youtube.videos().list(
+                    part='snippet,contentDetails',
+                    id=video_id
+                ).execute()
                 
+                if not video_info.get('items'):
+                    raise ValueError("Video not found or not accessible")
+                    
+            except Exception as e:
+                self.logger.error(f"Failed to get video info from API: {e}")
+                raise
+
+            # Настройки для yt-dlp
             ydl_opts = {
-                'format': 'worst[height<=480]',
+                'format': 'best[height<=480]',
                 'outtmpl': output_path,
                 'quiet': True,
                 'no_warnings': True,
-                'cookiefile': self.cookies
+                'extract_flat': False
             }
+
+            # Добавляем куки, если они есть
+            if self.cookies:
+                ydl_opts['cookies'] = self.cookies
+                self.logger.info("Using session cookies for download")
             
+            # Скачиваем видео
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                try:
-                    # Проверяем доступность видео перед загрузкой
-                    info = ydl.extract_info(video_url, download=False)
-                    if info.get('age_limit', 0) > 0:
-                        raise ValueError("Age-restricted video requires authentication")
-                    
-                    # Загружаем видео
-                    ydl.download([video_url])
-                    
-                except yt_dlp.utils.DownloadError as e:
-                    if "Cookie" in str(e):
-                        self.logger.error("Cookie-related download error")
-                        raise ValueError("Failed to authenticate with YouTube")
-                    raise
-                    
-            if not os.path.exists(output_path):
-                raise FileNotFoundError(f"Download completed but file not found: {output_path}")
+                ydl.download([url])
+                self.logger.info(f"Video downloaded successfully: {url}")
                 
-            return output_path
+        except Exception as e:
+            self.logger.error(f"Failed to download video: {e}")
+            raise
+
+    def _extract_video_id(self, url):
+        """Извлечение ID видео из URL"""
+        try:
+            # Поддержка различных форматов URL YouTube
+            patterns = [
+                r'(?:v=|\/)([0-9A-Za-z_-]{11}).*',
+                r'youtu\.be\/([0-9A-Za-z_-]{11})',
+                r'youtube\.com\/embed\/([0-9A-Za-z_-]{11})'
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, url)
+                if match:
+                    return match.group(1)
+            return None
             
         except Exception as e:
-            self.logger.error(f"Video download failed: {e}")
-            raise
+            self.logger.error(f"Failed to extract video ID: {e}")
+            return None
 
     def cleanup(self):
         """Очистка ресурсов"""
@@ -177,7 +186,3 @@ class YouTubeAPI:
         except Exception as e:
             self.logger.error(f"Error loading config: {e}")
             return {}
-
-    def set_cookies(self, cookies):
-        """Установка куки для работы с YouTube"""
-        self.cookies = cookies
