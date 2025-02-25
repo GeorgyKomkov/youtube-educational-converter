@@ -142,22 +142,28 @@ class VideoProcessor:
     def download_video(self, video_url):
         """Download video from YouTube"""
         try:
+            # Загружаем cookies из файла
+            cookies_path = Path('config/youtube.cookies')
+            if not cookies_path.exists():
+                logger.warning("YouTube cookies file not found")
+            
             ydl_opts = {
                 'format': 'best',
                 'outtmpl': str(self.temp_dir / '%(id)s.%(ext)s'),
                 'quiet': True,
                 'no_warnings': True,
-                # Добавляем настройки для обхода ограничений
+                'cookiefile': str(cookies_path),  # Добавляем путь к файлу с cookies
                 'nocheckcertificate': True,
                 'ignoreerrors': True,
                 'extract_flat': False,
-                # Добавляем User-Agent
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
                 }
             }
             
             logger.info(f"Downloading video from URL: {video_url}")
+            logger.info(f"Using cookies from: {cookies_path}")
+            
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(video_url, download=True)
                 video_path = self.temp_dir / f"{info['id']}.{info['ext']}"
@@ -166,7 +172,6 @@ class VideoProcessor:
                 
         except Exception as e:
             logger.error(f"Error downloading video: {e}")
-            # Добавляем больше информации об ошибке
             if hasattr(e, 'msg'):
                 logger.error(f"Error message: {e.msg}")
             raise RuntimeError(f"Failed to download video: {str(e)}")

@@ -44,9 +44,14 @@ async function handleYouTubeCookies() {
         const cookies = document.cookie
             .split(';')
             .map(cookie => cookie.trim())
-            .filter(cookie => cookie.startsWith('YT'));
+            .filter(cookie => cookie.startsWith('YT') || 
+                            cookie.startsWith('CONSENT') || 
+                            cookie.startsWith('VISITOR_INFO1_LIVE') ||
+                            cookie.startsWith('LOGIN_INFO'));
         
         if (cookies.length > 0) {
+            console.log('Found YouTube cookies:', cookies);
+            
             // Отправляем на сервер
             const response = await fetch('/save_cookies', {
                 method: 'POST',
@@ -60,6 +65,10 @@ async function handleYouTubeCookies() {
             if (!response.ok) {
                 throw new Error('Failed to save cookies');
             }
+            
+            console.log('Cookies saved successfully');
+        } else {
+            console.warn('No YouTube cookies found');
         }
     } catch (error) {
         console.error('Error handling YouTube cookies:', error);
