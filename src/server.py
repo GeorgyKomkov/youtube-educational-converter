@@ -301,16 +301,32 @@ def save_cookies():
     try:
         cookies = request.json.get('cookies', [])
         if not cookies:
+            logger.warning("No cookies provided in request")
             return jsonify({'error': 'No cookies provided'}), 400
             
+        # Убедимся, что директория config существует
+        config_dir = os.path.join(os.path.dirname(__file__), '..', 'config')
+        os.makedirs(config_dir, exist_ok=True)
+        
+        cookie_file = os.path.join(config_dir, 'youtube.cookies')
+        
         # Сохраняем куки в файл
-        with open('config/youtube.cookies', 'w') as f:
-            json.dump(cookies, f, indent=2)
+        try:
+            with open(cookie_file, 'w') as f:
+                json.dump(cookies, f, indent=2)
             
-        return jsonify({'status': 'success'})
+            # Устанавливаем правильные права доступа
+            os.chmod(cookie_file, 0o644)
+            
+            logger.info("Cookies saved successfully")
+            return jsonify({'status': 'success'})
+        except IOError as e:
+            logger.error(f"Failed to write cookies file: {e}")
+            return jsonify({'error': 'Failed to save cookies'}), 500
+            
     except Exception as e:
-        logger.error(f"Error saving cookies: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error handling YouTube cookies: {e}")
+        return jsonify({'error': 'Failed to save cookies'}), 500
 
 @app.route('/static/<path:path>')
 def send_static(path):

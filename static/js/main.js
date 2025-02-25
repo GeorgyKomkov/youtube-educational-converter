@@ -51,6 +51,12 @@ async function handleYouTubeCookies() {
                 cookie.startsWith('LOGIN_INFO')
             );
         
+        if (ytCookies.length === 0) {
+            console.warn('No YouTube cookies found');
+            showAlert('YouTube cookies не найдены', 'warning');
+            return;
+        }
+
         // Формируем объект для отправки
         const cookiesData = {
             cookies: ytCookies.map(cookie => {
@@ -64,23 +70,24 @@ async function handleYouTubeCookies() {
             })
         };
 
-        // Отправляем на сервер
         const response = await fetch('/save_cookies', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(cookiesData)
+            body: JSON.stringify(cookiesData),
+            credentials: 'same-origin'  // Важно для работы с куки
         });
 
         if (!response.ok) {
-            throw new Error('Failed to save cookies');
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to save cookies');
         }
 
         console.log('YouTube cookies saved successfully');
     } catch (error) {
         console.error('Error handling YouTube cookies:', error);
-        showAlert('Ошибка при сохранении cookies', 'error');
+        showAlert('Ошибка при сохранении cookies: ' + error.message, 'error');
     }
 }
 
@@ -180,6 +187,7 @@ function showAlert(message, type) {
     
     container.insertBefore(alertDiv, container.firstChild);
     
+    // Автоматически скрываем через 5 секунд
     setTimeout(() => {
         alertDiv.remove();
     }, 5000);
