@@ -143,7 +143,7 @@ async function handleFormSubmit(event) {
     }
 
     try {
-        showStatus('Начинаем обработку видео...', 'info');
+        showStatus('обработка видео...', 'info');
         
         // Сначала проверяем авторизацию
         const authResponse = await fetch('/api/check-auth');

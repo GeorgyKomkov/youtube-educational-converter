@@ -405,7 +405,7 @@ try:
         start_http_server(9091)
     sock.close()
 except Exception as e:
-    logger.error(f"Failed to start Prometheus server: {e}")
+    logger.error(f"Failed to starts Prometheus server: {e}")
 
 @app.route('/api/check-auth')
 def check_auth():
