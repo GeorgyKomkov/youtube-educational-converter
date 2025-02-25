@@ -1,6 +1,6 @@
 // Проверка и показ модального окна при загрузке
 document.addEventListener('DOMContentLoaded', async function() {
-    // Показываем модальное окно о куки только если пользователь еще не принял их
+    // Базовая проверка куки для пользовательского соглашения
     if (!localStorage.getItem('cookiesAccepted')) {
         showCookieModal();
     }
@@ -142,13 +142,39 @@ async function handleFormSubmit(event) {
         return;
     }
 
-    // Проверяем куки перед отправкой
-    const hasYouTubeCookies = await handleYouTubeCookies();
-    if (!hasYouTubeCookies) {
-        return;
-    }
+    try {
+        showStatus('Начинаем обработку видео...', 'info');
+        
+        // Сначала проверяем авторизацию
+        const authResponse = await fetch('/api/check-auth');
+        const authData = await authResponse.json();
+        
+        if (!authData.authorized) {
+            showAlert('Требуется авторизация на YouTube', 'warning');
+            return;
+        }
+        
+        // Если авторизация успешна, отправляем видео
+        const response = await fetch('/process_video', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ url: videoUrl })
+        });
 
-    // Продолжаем обработку формы...
+        if (!response.ok) {
+            throw new Error('Failed to process video');
+        }
+
+        const data = await response.json();
+        if (data.task_id) {
+            startStatusCheck(data.task_id);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showAlert('Ошибка при обработке видео', 'error');
+    }
 }
 
 async function startStatusCheck(taskId) {

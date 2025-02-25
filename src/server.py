@@ -407,6 +407,32 @@ try:
 except Exception as e:
     logger.error(f"Failed to start Prometheus server: {e}")
 
+@app.route('/api/check-auth')
+def check_auth():
+    """Проверка авторизации YouTube"""
+    try:
+        # Проверяем наличие файла с куки
+        cookie_file = os.path.join('config', 'youtube.cookies')
+        if not os.path.exists(cookie_file):
+            return jsonify({'authorized': False, 'error': 'No cookies found'})
+            
+        # Проверяем валидность куки
+        with open(cookie_file, 'r') as f:
+            cookies = json.load(f)
+            
+        # Проверяем наличие необходимых куки
+        required_cookies = ['CONSENT', 'VISITOR_INFO1_LIVE', 'LOGIN_INFO']
+        has_all_cookies = all(
+            any(cookie['name'] == req for cookie in cookies)
+            for req in required_cookies
+        )
+        
+        return jsonify({'authorized': has_all_cookies})
+        
+    except Exception as e:
+        logger.error(f"Error checking auth: {e}")
+        return jsonify({'authorized': False, 'error': str(e)})
+
 if __name__ == "__main__":
     app.run(
         host=config['server'].get('host', '0.0.0.0'),
