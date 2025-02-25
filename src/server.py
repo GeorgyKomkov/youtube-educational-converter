@@ -148,35 +148,35 @@ REQUEST_LATENCY = Histogram('request_latency_seconds', 'Request latency in secon
 cleanup_lock = Lock()
 
 @celery.task(bind=True)
-def process_video_task(self, url, cookie_file):
+def process_video_task(self, url):
     """Задача для обработки видео"""
     try:
-        # Проверяем и создаем директории
-        temp_dir = config.get('temp_dir', '/app/temp')
-        output_dir = config.get('output_dir', '/app/output')
+        logger.info(f"Starting video processing task for URL: {url}")
         
-        logger.info(f"Task directories: temp={temp_dir}, output={output_dir}")
+        # Инициализация VideoProcessor
+        try:
+            processor = VideoProcessor(config)
+            logger.info("VideoProcessor initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize VideoProcessor: {e}")
+            raise
         
-        # Проверяем существование директорий
-        if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir, exist_ok=True)
-            logger.info(f"Created temp directory: {temp_dir}")
+        # Обработка видео
+        try:
+            result = processor.process_video(url)
+            logger.info(f"Video processing completed: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Video processing failed: {e}")
+            raise
             
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir, exist_ok=True)
-            logger.info(f"Created output directory: {output_dir}")
-            
-        # Устанавливаем права
-        os.chmod(temp_dir, 0o777)
-        os.chmod(output_dir, 0o777)
-        
-        processor = VideoProcessor(config)
-        result = processor.process_video(url)  # Убираем лишний аргумент cookie_file
-        
-        return result
     except Exception as e:
-        logger.exception(f"Task failed: {e}")
-        raise
+        logger.exception(f"Task failed with error: {e}")
+        # Возвращаем ошибку в формате, который ожидает Celery
+        return {
+            'status': 'error',
+            'error': str(e)
+        }
 
 def check_disk_space():
     """Проверка и очистка диска при необходимости"""
@@ -214,23 +214,42 @@ def index():
 
 @app.route('/process_video', methods=['POST'])
 def process_video():
+    """Обработка запроса на конвертацию видео"""
     try:
+        # Проверка входных данных
         data = request.get_json()
-        if not data or 'url' not in data:
+        if not data:
+            logger.error("No JSON data in request")
+            return jsonify({'error': 'No data provided'}), 400
+            
+        if 'url' not in data:
+            logger.error("No URL in request data")
             return jsonify({'error': 'No URL provided'}), 400
             
         url = data.get('url')
+        logger.info(f"Received video processing request for URL: {url}")
         
-        # Запускаем задачу только с URL
-        task = process_video_task.delay(url)
-        
-        return jsonify({
-            'task_id': task.id,
-            'status': 'processing'
-        })
+        # Проверка URL
+        if not url.startswith(('http://', 'https://')):
+            logger.error(f"Invalid URL format: {url}")
+            return jsonify({'error': 'Invalid URL format'}), 400
+            
+        # Запуск задачи
+        try:
+            task = process_video_task.delay(url)
+            logger.info(f"Task created with ID: {task.id}")
+            
+            return jsonify({
+                'task_id': task.id,
+                'status': 'processing'
+            })
+        except Exception as e:
+            logger.error(f"Failed to create task: {e}")
+            return jsonify({'error': 'Failed to start processing'}), 500
+            
     except Exception as e:
-        logger.error(f"Error processing video request: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.exception(f"Error processing request: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/status/<task_id>')
 def get_task_status(task_id):
