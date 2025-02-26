@@ -3,6 +3,7 @@ FROM python:3.9-slim
 
 # Установка системных зависимостей
 RUN apt-get update && apt-get install -y \
+    curl \
     git \
     ffmpeg \
     wkhtmltopdf \
