@@ -240,26 +240,39 @@ async function getYoutubeCookies() {
     try {
         console.log('Starting getYoutubeCookies...');
         
-        // Делаем запрос к YouTube для обновления куков
+        // Сначала делаем запрос к YouTube для обновления кук
         await fetch('https://www.youtube.com', {
-            credentials: 'include',  // Важно! Разрешаем получение куков
-            mode: 'no-cors'         // Для внешних доменов используем no-cors
+            credentials: 'include',
+            mode: 'no-cors'
         });
         console.log('YouTube fetch completed');
 
-        // Получаем все куки и логируем их
+        // Получаем все куки и логируем их для отладки
         const allCookies = document.cookie;
-        console.log('All cookies:', allCookies);
+        console.log('Raw cookies:', allCookies);
 
+        // Если куки пустые, пробуем получить их через более широкий домен
+        if (!allCookies) {
+            console.log('No cookies found, trying alternative method...');
+            const cookies = await fetch('https://www.youtube.com', {
+                credentials: 'include',
+                mode: 'no-cors'
+            });
+            console.log('Alternative fetch completed');
+        }
+
+        // Фильтруем куки YouTube
         const cookies = document.cookie
             .split(';')
             .map(cookie => cookie.trim())
             .filter(cookie => {
                 const name = cookie.split('=')[0].trim();
+                // Расширяем список искомых куков
                 const isYoutubeCookie = [
                     'SID', 'HSID', 'SSID', 'APISID', 'SAPISID',
                     'LOGIN_INFO', 'VISITOR_INFO1_LIVE', 'CONSENT',
-                    '__Secure-1PSID', '__Secure-3PSID', 'PREF'
+                    '__Secure-1PSID', '__Secure-3PSID', 'PREF',
+                    'YSC', '__Secure-1PAPISID', '__Secure-3PAPISID'
                 ].some(prefix => name.startsWith(prefix));
                 
                 if (isYoutubeCookie) {
@@ -268,9 +281,9 @@ async function getYoutubeCookies() {
                 return isYoutubeCookie;
             })
             .map(cookie => {
-                const [name, value] = cookie.split('=');
+                const [name, value] = cookie.split('=').map(part => part.trim());
                 return {
-                    name: name.trim(),
+                    name: name,
                     value: value,
                     domain: '.youtube.com',
                     path: '/'
@@ -278,10 +291,15 @@ async function getYoutubeCookies() {
             });
 
         console.log('Filtered YouTube cookies:', cookies);
+
+        if (cookies.length === 0) {
+            throw new Error('No YouTube cookies found after filtering');
+        }
+
         return cookies;
     } catch (error) {
-        console.error('Error getting YouTube cookies:', error);
-        return [];
+        console.error('Error in getYoutubeCookies:', error);
+        throw new Error('No YouTube cookies available');
     }
 }
 
@@ -303,24 +321,22 @@ async function saveCookies() {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
             },
-            credentials: 'include',  // Важно! Разрешаем отправку куков
-            mode: 'cors',           // Явно указываем режим CORS
+            credentials: 'include',
+            mode: 'cors',
             body: JSON.stringify({ cookies })
         });
 
-        console.log('Server response status:', response.status);
-        
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.error || 'Failed to save cookies');
         }
 
         const data = await response.json();
-        console.log('Server response:', data);
+        console.log('Cookies saved successfully:', data);
         return true;
     } catch (error) {
         console.error('Error in saveCookies:', error);
-        showAlert('Ошибка при сохранении cookies', 'error');
+        showAlert('Ошибка при сохранении cookies: ' + error.message, 'error');
         return false;
     }
 }
