@@ -17,7 +17,7 @@ class YouTubeAPI:
         self._setup_http_session()
         self._setup_redis()
         self._setup_api()
-        self.cookies = self._load_cookies()
+        self.cookies = self._load_cookies()  # Загружаем куки при инициализации
         
     def _setup_http_session(self):
         """Настройка HTTP сессии с retry и timeout"""
@@ -52,7 +52,7 @@ class YouTubeAPI:
             if not api_key:
                 raise ValueError("YouTube API key not found")
             
-            self.api_key = api_key  # Сохраняем API ключ
+            self.api_key = api_key
             self.youtube = build(
                 'youtube', 
                 'v3', 
@@ -97,7 +97,15 @@ class YouTubeAPI:
             self.logger.warning("No cookies provided in session")
             return
         self.cookies = cookies
-        self.logger.info("Session cookies set successfully")
+        
+        # Сохраняем куки в файл для использования в yt-dlp
+        try:
+            cookie_path = Path('config/youtube.cookies')
+            with open(cookie_path, 'w') as f:
+                json.dump(cookies, f)
+            self.logger.info("Session cookies saved to file successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to save cookies to file: {e}")
 
     def download_video(self, url, output_path):
         """Загрузка видео с использованием yt-dlp"""
@@ -107,19 +115,12 @@ class YouTubeAPI:
             if not video_id:
                 raise ValueError("Invalid YouTube URL")
 
-            # Проверяем доступность видео через API
-            try:
-                video_info = self.youtube.videos().list(
-                    part='snippet,contentDetails',
-                    id=video_id
-                ).execute()
-                
-                if not video_info.get('items'):
-                    raise ValueError("Video not found or not accessible")
-                    
-            except Exception as e:
-                self.logger.error(f"Failed to get video info from API: {e}")
-                raise
+            # Проверяем наличие куки
+            cookie_file = Path('config/youtube.cookies')
+            if not cookie_file.exists():
+                self.logger.warning("No cookie file found")
+                if not self.cookies:
+                    raise ValueError("YouTube authorization required")
 
             # Настройки для yt-dlp
             ydl_opts = {
@@ -127,12 +128,12 @@ class YouTubeAPI:
                 'outtmpl': output_path,
                 'quiet': True,
                 'no_warnings': True,
-                'cookiefile': 'config/youtube.cookies' if self.cookies else None,
+                'cookiefile': str(cookie_file) if cookie_file.exists() else None,
                 'nocheckcertificate': True
             }
 
-            # Добавляем куки, если они есть
-            if self.cookies:
+            # Добавляем куки напрямую, если файл недоступен
+            if not cookie_file.exists() and self.cookies:
                 ydl_opts['cookies'] = self.cookies
                 self.logger.info("Using session cookies for download")
             
@@ -148,7 +149,6 @@ class YouTubeAPI:
     def _extract_video_id(self, url):
         """Извлечение ID видео из URL"""
         try:
-            # Поддержка различных форматов URL YouTube
             patterns = [
                 r'(?:v=|\/)([0-9A-Za-z_-]{11}).*',
                 r'youtu\.be\/([0-9A-Za-z_-]{11})',
@@ -168,9 +168,9 @@ class YouTubeAPI:
     def cleanup(self):
         """Очистка ресурсов"""
         try:
-            if self.youtube:
+            if hasattr(self, 'youtube'):
                 self.youtube.close()
-            if self.session:
+            if hasattr(self, 'session'):
                 self.session.close()
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")
@@ -182,7 +182,11 @@ class YouTubeAPI:
     def _load_config(self):
         """Загрузка конфигурации"""
         try:
-            with open('config/config.yaml', 'r') as f:
+            config_path = Path('config/config.yaml')
+            if not config_path.exists():
+                return {}
+                
+            with open(config_path, 'r') as f:
                 import yaml
                 config = yaml.safe_load(f)
                 return config.get('youtube_api', {})

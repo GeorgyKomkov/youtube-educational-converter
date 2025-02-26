@@ -239,30 +239,35 @@ function showStatus(message, type = 'info') {
 // Добавляем новые функции для работы с куки YouTube
 async function getYoutubeCookies() {
     try {
-        // Делаем запрос к YouTube в режиме no-cors
-        await fetch('https://www.youtube.com', {
-            mode: 'no-cors',  // Добавляем этот параметр
-            credentials: 'include'
-        });
-        
-        // Получаем все куки
         const allCookies = document.cookie.split(';').map(c => c.trim());
-        console.log('Available cookies:', allCookies);
+        console.log('Available cookies:', allCookies); // Для отладки
         
-        // Фильтруем YouTube куки
+        if (allCookies.length === 0) {
+            throw new Error('No cookies available');
+        }
+        
+        // Фильтруем YouTube куки по известным префиксам
         const youtubeCookies = allCookies
             .filter(cookie => {
                 const name = cookie.split('=')[0].trim();
-                return name.startsWith('YT') || 
-                       name.startsWith('CONSENT') || 
-                       name.startsWith('VISITOR_INFO1_LIVE') ||
-                       name.startsWith('LOGIN_INFO');
+                // Расширяем список префиксов для поиска
+                return name.startsWith('SID=') || 
+                       name.startsWith('HSID=') ||
+                       name.startsWith('SSID=') ||
+                       name.startsWith('APISID=') ||
+                       name.startsWith('SAPISID=') ||
+                       name.startsWith('__Secure-') ||
+                       name.startsWith('LOGIN_INFO=') ||
+                       name.startsWith('VISITOR_INFO1_LIVE=') ||
+                       name.startsWith('CONSENT=');
             })
             .map(cookie => {
                 const [name, ...values] = cookie.split('=');
+                const value = values.join('='); // Восстанавливаем значение, если оно содержит =
+                console.log(`Processing cookie: ${name}`); // Добавляем лог для отладки
                 return {
                     name: name.trim(),
-                    value: values.join('='),
+                    value: value,
                     domain: '.youtube.com',
                     path: '/'
                 };
@@ -272,7 +277,8 @@ async function getYoutubeCookies() {
         return youtubeCookies;
         
     } catch (error) {
-        console.error('Error getting YouTube cookies:', error);
+        console.error('Error getting cookies:', error);
+        showAlert('Пожалуйста, убедитесь что вы авторизованы на YouTube', 'warning');
         return [];
     }
 }
@@ -284,7 +290,9 @@ async function saveCookies() {
 
         if (cookies.length === 0) {
             console.warn('No YouTube cookies found');
-            showAlert('Пожалуйста, авторизуйтесь на YouTube', 'warning');
+            showAlert('Пожалуйста, авторизуйтесь на YouTube в новой вкладке', 'warning');
+            // Добавляем кнопку для открытия YouTube
+            addYouTubeAuthButton();
             return false;
         }
 

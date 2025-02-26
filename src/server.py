@@ -2,7 +2,6 @@ from flask import (
     Flask, 
     request, 
     jsonify, 
-    session, 
     render_template,
     send_from_directory
 )
@@ -149,18 +148,18 @@ REQUEST_LATENCY = Histogram('request_latency_seconds', 'Request latency in secon
 cleanup_lock = Lock()
 
 @celery.task(bind=True)
-def process_video_task(self, url, cookies=None):
+def process_video_task(self, url):
     """Задача для обработки видео"""
     try:
         logger.info(f"Starting video processing task for URL: {url}")
         
+        # Проверяем наличие куки
+        cookie_file = os.path.join('config', 'youtube.cookies')
+        if not os.path.exists(cookie_file):
+            raise ValueError("YouTube authorization required")
+            
         # Инициализация VideoProcessor
         processor = VideoProcessor(config)
-        
-        # Устанавливаем куки в youtube_api
-        if cookies:
-            processor.youtube_api.set_session_cookies(cookies)
-            logger.info("YouTube cookies set from task parameters")
         
         # Обработка видео
         result = processor.process_video(url)
@@ -220,11 +219,8 @@ def process_video():
         url = data.get('url')
         logger.info(f"Received video processing request for URL: {url}")
         
-        # Получаем куки из сессии здесь, в контексте запроса
-        cookies = session.get('youtube_cookies')
-        
         # Запускаем задачу, передавая куки как параметр
-        task = process_video_task.delay(url=url, cookies=cookies)
+        task = process_video_task.delay(url=url)
         logger.info(f"Task created with ID: {task.id}")
         
         return jsonify({
@@ -282,20 +278,6 @@ def get_task_status(task_id):
             'error': str(e)
         }), 500
 
-@app.route('/api/set-cookies', methods=['POST'])
-def set_cookies():
-    """Сохранение cookies YouTube"""
-    try:
-        data = request.json
-        if not data or 'cookies' not in data:
-            return jsonify({'error': 'No cookies provided'}), 400
-            
-        session['youtube_cookies'] = data['cookies']
-        return jsonify({'status': 'success'})
-    except Exception as e:
-        logger.error(f"Error setting cookies: {e}")
-        return jsonify({'error': str(e)}), 500
-
 @app.route('/api/save-cookies', methods=['POST'])
 def save_cookies():
     """Сохранение куки YouTube в файл"""
@@ -312,6 +294,9 @@ def save_cookies():
         if not cookies:
             logger.error("Empty cookies array")
             return jsonify({'error': 'Empty cookies'}), 400
+
+        # Создаем директорию config если её нет
+        os.makedirs('config', exist_ok=True)
 
         # Проверяем наличие необходимых куки
         required_cookies = ['CONSENT', 'VISITOR_INFO1_LIVE', 'LOGIN_INFO']
@@ -330,11 +315,17 @@ def save_cookies():
                 json.dump(cookies, f, indent=2)
             logger.info(f"Cookies saved to {cookie_file}")
             
+            # Устанавливаем права на файл
+            os.chmod(cookie_file, 0o666)
+            
             # Проверяем, что файл создался
             if os.path.exists(cookie_file):
                 logger.info(f"Cookie file created successfully, size: {os.path.getsize(cookie_file)} bytes")
             else:
                 raise FileNotFoundError("Cookie file was not created")
+                
+            # Обновляем куки в youtube_api
+            youtube_api.set_session_cookies(cookies)
                 
         except Exception as e:
             logger.error(f"Error writing cookie file: {e}")
