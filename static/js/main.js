@@ -239,63 +239,53 @@ function showStatus(message, type = 'info') {
 // Добавляем новые функции для работы с куки YouTube
 async function getYoutubeCookies() {
     try {
-        const allCookies = document.cookie.split(';').map(c => c.trim());
-        console.log('Available cookies:', allCookies); // Для отладки
+        // Пытаемся получить куки через fetch запрос к YouTube
+        await fetch('https://www.youtube.com', {
+            credentials: 'include',
+            mode: 'no-cors'
+        });
+
+        // Получаем все куки после запроса
+        const allCookies = document.cookie.split(';');
         
-        if (allCookies.length === 0) {
-            throw new Error('No cookies available');
-        }
-        
-        // Фильтруем YouTube куки по известным префиксам
+        // Фильтруем и форматируем YouTube куки
         const youtubeCookies = allCookies
+            .map(cookie => cookie.trim())
             .filter(cookie => {
                 const name = cookie.split('=')[0].trim();
-                // Расширяем список префиксов для поиска
-                return name.startsWith('SID=') || 
-                       name.startsWith('HSID=') ||
-                       name.startsWith('SSID=') ||
-                       name.startsWith('APISID=') ||
-                       name.startsWith('SAPISID=') ||
-                       name.startsWith('__Secure-') ||
-                       name.startsWith('LOGIN_INFO=') ||
-                       name.startsWith('VISITOR_INFO1_LIVE=') ||
-                       name.startsWith('CONSENT=');
+                return [
+                    'SID', 'HSID', 'SSID', 'APISID', 'SAPISID',
+                    'LOGIN_INFO', 'VISITOR_INFO1_LIVE', 'CONSENT',
+                    '__Secure-1PSID', '__Secure-3PSID', 'PREF'
+                ].some(prefix => name.startsWith(prefix));
             })
             .map(cookie => {
                 const [name, ...values] = cookie.split('=');
-                const value = values.join('='); // Восстанавливаем значение, если оно содержит =
-                console.log(`Processing cookie: ${name}`); // Добавляем лог для отладки
                 return {
                     name: name.trim(),
-                    value: value,
+                    value: values.join('='),
                     domain: '.youtube.com',
                     path: '/'
                 };
             });
-            
+
         console.log('Found YouTube cookies:', youtubeCookies);
-        return youtubeCookies;
         
+        if (youtubeCookies.length === 0) {
+            throw new Error('No YouTube cookies found');
+        }
+
+        return youtubeCookies;
     } catch (error) {
-        console.error('Error getting cookies:', error);
-        showAlert('Пожалуйста, убедитесь что вы авторизованы на YouTube', 'warning');
-        return [];
+        console.error('Error getting YouTube cookies:', error);
+        throw error;
     }
 }
 
 async function saveCookies() {
     try {
         const cookies = await getYoutubeCookies();
-        console.log('Cookies to save:', cookies);
-
-        if (cookies.length === 0) {
-            console.warn('No YouTube cookies found');
-            showAlert('Пожалуйста, авторизуйтесь на YouTube в новой вкладке', 'warning');
-            // Добавляем кнопку для открытия YouTube
-            addYouTubeAuthButton();
-            return false;
-        }
-
+        
         const response = await fetch('/api/save-cookies', {
             method: 'POST',
             headers: {
@@ -305,18 +295,26 @@ async function saveCookies() {
             credentials: 'same-origin'
         });
 
-        const data = await response.json();
-        console.log('Server response:', data);
-
         if (!response.ok) {
-            throw new Error(data.error || 'Failed to save cookies');
+            throw new Error('Failed to save cookies');
         }
 
+        const data = await response.json();
+        console.log('Cookies saved successfully:', data);
         return true;
     } catch (error) {
-        console.error('Error saving cookies:', error);
-        showAlert('Ошибка при сохранении cookies', 'error');
+        console.error('Error in saveCookies:', error);
+        showAlert('Пожалуйста, авторизуйтесь на YouTube', 'warning');
         return false;
     }
 }
+
+// Добавляем автоматическое обновление кук каждые 5 минут
+setInterval(async () => {
+    try {
+        await saveCookies();
+    } catch (error) {
+        console.error('Error in cookie refresh:', error);
+    }
+}, 5 * 60 * 1000);
 
