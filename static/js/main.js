@@ -39,54 +39,42 @@ function rejectCookies() {
 
 async function handleYouTubeCookies() {
     try {
-        // Пытаемся получить куки через fetch запрос к YouTube
-        const response = await fetch('https://www.youtube.com', {
-            credentials: 'include'
-        });
+        // Проверяем авторизацию перед попыткой получить куки
+        const authResponse = await fetch('/api/check-auth');
+        const authData = await authResponse.json();
         
-        // Получаем все куки
-        const ytCookies = document.cookie
-            .split(';')
-            .map(cookie => cookie.trim())
-            .filter(cookie => 
-                cookie.startsWith('YT') || 
-                cookie.startsWith('CONSENT') || 
-                cookie.startsWith('VISITOR_INFO1_LIVE') ||
-                cookie.startsWith('LOGIN_INFO')
-            );
-
-        if (ytCookies.length === 0) {
-            showAlert('Пожалуйста, авторизуйтесь на YouTube', 'warning');
+        if (!authData.authorized) {
+            // Если нет авторизации, показываем сообщение и кнопку для входа
+            showAlert('Требуется авторизация на YouTube', 'warning');
+            addYouTubeAuthButton();
             return false;
         }
 
-        // Отправляем куки на сервер
-        const response2 = await fetch('/save_cookies', {
+        // Получаем куки только если авторизованы
+        const cookies = await getYoutubeCookies();
+        if (!cookies || cookies.length === 0) {
+            showAlert('Не удалось получить куки YouTube', 'error');
+            return false;
+        }
+
+        // Сохраняем куки на сервере
+        const response = await fetch('/api/save-cookies', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                cookies: ytCookies.map(cookie => {
-                    const [name, value] = cookie.split('=');
-                    return {
-                        name: name.trim(),
-                        value: value,
-                        domain: '.youtube.com',
-                        path: '/'
-                    };
-                })
-            }),
-            credentials: 'same-origin'
+            body: JSON.stringify({ cookies }),
+            credentials: 'include'
         });
 
-        if (!response2.ok) {
+        if (!response.ok) {
             throw new Error('Failed to save cookies');
         }
 
         return true;
     } catch (error) {
         console.error('Error handling YouTube cookies:', error);
+        showAlert('Ошибка при работе с куки YouTube', 'error');
         return false;
     }
 }
@@ -146,33 +134,33 @@ async function handleFormSubmit(event) {
     }
 
     try {
-        showStatus('обработка видео...', 'info');
-        
-        // Сначала проверяем авторизацию
-        const authResponse = await fetch('/api/check-auth');
-        const authData = await authResponse.json();
-        
-        if (!authData.authorized) {
-            showAlert('Требуется авторизация на YouTube', 'warning');
+        // Проверяем и обновляем куки перед отправкой
+        const cookiesValid = await handleYouTubeCookies();
+        if (!cookiesValid) {
             return;
         }
+
+        showStatus('Начинаем обработку видео...', 'info');
         
-        // Если авторизация успешна, отправляем видео
         const response = await fetch('/process_video', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ url: videoUrl })
+            body: JSON.stringify({ url: videoUrl }),
+            credentials: 'include'
         });
 
         if (!response.ok) {
-            throw new Error('Failed to process video');
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         const data = await response.json();
+        
         if (data.task_id) {
             startStatusCheck(data.task_id);
+        } else if (data.error) {
+            showAlert(data.error, 'error');
         }
     } catch (error) {
         console.error('Error:', error);
@@ -181,31 +169,43 @@ async function handleFormSubmit(event) {
 }
 
 async function startStatusCheck(taskId) {
+    const progressBar = document.querySelector('.progress-bar');
+    const progressContainer = document.getElementById('progress-bar');
+    
     try {
+        progressContainer.style.display = 'block';
+        
         while (true) {
-            const response = await fetch('/status/' + taskId);
+            const response = await fetch(`/status/${taskId}`);
             const data = await response.json();
             
-            console.log('Status check:', data);
-            
-            // Обновляем статус на странице
             if (data.status === 'processing') {
-                showStatus(`Конвертация видео: ${data.progress || 0}%`, 'info');
+                const progress = data.progress || 0;
+                progressBar.style.width = `${progress}%`;
+                showStatus(`Обработка видео: ${progress}%`, 'info');
             } else if (data.status === 'completed') {
-                showStatus('Конвертация завершена!', 'success');
-                // Здесь можно добавить код для отображения результата
+                progressBar.style.width = '100%';
+                showStatus('Обработка завершена!', 'success');
+                
+                // Если есть ссылка на PDF, показываем её
+                if (data.pdf_url) {
+                    window.location.href = data.pdf_url;
+                }
                 break;
             } else if (data.status === 'failed') {
-                showStatus('Ошибка при конвертации', 'error');
+                showStatus(`Ошибка: ${data.error || 'Неизвестная ошибка'}`, 'error');
                 break;
             }
             
-            // Ждем 2 секунды перед следующей проверкой
             await new Promise(resolve => setTimeout(resolve, 2000));
         }
     } catch (error) {
-        console.error('Status check error:', error);
+        console.error('Error checking status:', error);
         showStatus('Ошибка при проверке статуса', 'error');
+    } finally {
+        setTimeout(() => {
+            progressContainer.style.display = 'none';
+        }, 3000);
     }
 }
 
@@ -239,46 +239,30 @@ function showStatus(message, type = 'info') {
 // Добавляем новые функции для работы с куки YouTube
 async function getYoutubeCookies() {
     try {
-        // Пытаемся получить куки через fetch запрос к YouTube
-        await fetch('https://www.youtube.com', {
-            credentials: 'include',
-            mode: 'no-cors'
-        });
-
-        // Получаем все куки после запроса
-        const allCookies = document.cookie.split(';');
-        
-        // Фильтруем и форматируем YouTube куки
-        const youtubeCookies = allCookies
+        // Получаем все куки
+        const cookies = document.cookie
+            .split(';')
             .map(cookie => cookie.trim())
-            .filter(cookie => {
-                const name = cookie.split('=')[0].trim();
-                return [
-                    'SID', 'HSID', 'SSID', 'APISID', 'SAPISID',
-                    'LOGIN_INFO', 'VISITOR_INFO1_LIVE', 'CONSENT',
-                    '__Secure-1PSID', '__Secure-3PSID', 'PREF'
-                ].some(prefix => name.startsWith(prefix));
-            })
+            .filter(cookie => 
+                cookie.startsWith('YT') || 
+                cookie.startsWith('CONSENT') || 
+                cookie.startsWith('VISITOR_INFO1_LIVE') ||
+                cookie.startsWith('LOGIN_INFO')
+            )
             .map(cookie => {
-                const [name, ...values] = cookie.split('=');
+                const [name, value] = cookie.split('=');
                 return {
                     name: name.trim(),
-                    value: values.join('='),
+                    value: value,
                     domain: '.youtube.com',
                     path: '/'
                 };
             });
 
-        console.log('Found YouTube cookies:', youtubeCookies);
-        
-        if (youtubeCookies.length === 0) {
-            throw new Error('No YouTube cookies found');
-        }
-
-        return youtubeCookies;
+        return cookies;
     } catch (error) {
         console.error('Error getting YouTube cookies:', error);
-        throw error;
+        return [];
     }
 }
 
