@@ -240,59 +240,57 @@ async function getYoutubeCookies() {
     try {
         console.log('Starting getYoutubeCookies...');
         
-        // Сначала делаем запрос к YouTube для обновления кук
-        await fetch('https://www.youtube.com', {
-            credentials: 'include',
-            mode: 'no-cors'
+        // Создаем iframe для доступа к кукам YouTube
+        const iframe = document.createElement('iframe');
+        iframe.src = 'https://www.youtube.com';
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+
+        // Ждем загрузки iframe
+        await new Promise((resolve) => {
+            iframe.onload = resolve;
         });
-        console.log('YouTube fetch completed');
 
-        // Получаем все куки и логируем их для отладки
-        const allCookies = document.cookie;
-        console.log('Raw cookies:', allCookies);
+        console.log('YouTube iframe loaded');
 
-        // Если куки пустые, пробуем получить их через более широкий домен
-        if (!allCookies) {
-            console.log('No cookies found, trying alternative method...');
-            const cookies = await fetch('https://www.youtube.com', {
-                credentials: 'include',
-                mode: 'no-cors'
-            });
-            console.log('Alternative fetch completed');
-        }
-
-        // Фильтруем куки YouTube
-        const cookies = document.cookie
-            .split(';')
-            .map(cookie => cookie.trim())
-            .filter(cookie => {
-                const name = cookie.split('=')[0].trim();
-                // Расширяем список искомых куков
-                const isYoutubeCookie = [
-                    'SID', 'HSID', 'SSID', 'APISID', 'SAPISID',
-                    'LOGIN_INFO', 'VISITOR_INFO1_LIVE', 'CONSENT',
-                    '__Secure-1PSID', '__Secure-3PSID', 'PREF',
-                    'YSC', '__Secure-1PAPISID', '__Secure-3PAPISID'
-                ].some(prefix => name.startsWith(prefix));
+        // Пытаемся получить куки через iframe
+        const cookies = await new Promise((resolve) => {
+            // Даем время на установку кук
+            setTimeout(() => {
+                const cookieString = document.cookie;
+                console.log('Raw cookies from iframe:', cookieString);
                 
-                if (isYoutubeCookie) {
-                    console.log('Found YouTube cookie:', name);
-                }
-                return isYoutubeCookie;
-            })
-            .map(cookie => {
-                const [name, value] = cookie.split('=').map(part => part.trim());
-                return {
-                    name: name,
-                    value: value,
-                    domain: '.youtube.com',
-                    path: '/'
-                };
-            });
+                const youtubeCookies = cookieString
+                    .split(';')
+                    .map(cookie => cookie.trim())
+                    .filter(cookie => {
+                        const name = cookie.split('=')[0].trim();
+                        return [
+                            'SID', 'HSID', 'SSID', 'APISID', 'SAPISID',
+                            'LOGIN_INFO', 'VISITOR_INFO1_LIVE', 'CONSENT',
+                            '__Secure-1PSID', '__Secure-3PSID', 'PREF',
+                            'YSC', '__Secure-1PAPISID', '__Secure-3PAPISID'
+                        ].some(prefix => name.startsWith(prefix));
+                    })
+                    .map(cookie => {
+                        const [name, value] = cookie.split('=').map(part => part.trim());
+                        return {
+                            name: name,
+                            value: value,
+                            domain: '.youtube.com',
+                            path: '/'
+                        };
+                    });
 
-        console.log('Filtered YouTube cookies:', cookies);
+                // Удаляем iframe
+                document.body.removeChild(iframe);
+                
+                console.log('Filtered YouTube cookies:', youtubeCookies);
+                resolve(youtubeCookies);
+            }, 2000); // Даем 2 секунды на загрузку
+        });
 
-        if (cookies.length === 0) {
+        if (!cookies || cookies.length === 0) {
             throw new Error('No YouTube cookies found after filtering');
         }
 
@@ -306,15 +304,32 @@ async function getYoutubeCookies() {
 async function saveCookies() {
     try {
         console.log('Starting saveCookies...');
-        const cookies = await getYoutubeCookies();
         
-        console.log('Cookies to save:', cookies);
+        // Проверяем авторизацию на YouTube
+        const authResponse = await fetch('/api/check-auth', {
+            credentials: 'include'
+        });
+        const authData = await authResponse.json();
         
-        if (!cookies || cookies.length === 0) {
-            throw new Error('No YouTube cookies available');
+        if (!authData.authorized) {
+            // Открываем YouTube в новом окне для авторизации
+            const authWindow = window.open('https://www.youtube.com', '_blank');
+            showAlert('Пожалуйста, авторизуйтесь на YouTube и затем закройте вкладку', 'info');
+            
+            // Ждем закрытия окна авторизации
+            await new Promise(resolve => {
+                const checkClosed = setInterval(() => {
+                    if (authWindow.closed) {
+                        clearInterval(checkClosed);
+                        resolve();
+                    }
+                }, 1000);
+            });
         }
 
-        console.log('Sending cookies to server...');
+        const cookies = await getYoutubeCookies();
+        console.log('Cookies to save:', cookies);
+
         const response = await fetch('/api/save-cookies', {
             method: 'POST',
             headers: {
