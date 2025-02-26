@@ -278,10 +278,15 @@ def get_task_status(task_id):
             'error': str(e)
         }), 500
 
-@app.route('/api/save-cookies', methods=['POST'])
+@app.route('/api/save-cookies', methods=['POST', 'OPTIONS'])
 def save_cookies():
     """Сохранение куки YouTube в файл"""
     logger.info("=== Starting save-cookies request ===")
+    
+    if request.method == 'OPTIONS':
+        response = app.make_default_options_response()
+        return response
+        
     try:
         data = request.get_json()
         logger.info(f"Received cookies request data: {data is not None}")
@@ -291,35 +296,37 @@ def save_cookies():
             return jsonify({'error': 'No cookies provided'}), 400
             
         cookies = data.get('cookies')
-        if not cookies:
-            logger.error("Empty cookies array")
-            return jsonify({'error': 'Empty cookies'}), 400
-
+        logger.info(f"Number of cookies received: {len(cookies)}")
+        
         # Создаем директорию config если её нет
-        config_dir = os.path.join(os.path.dirname(__file__), 'config')
+        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config')
         os.makedirs(config_dir, exist_ok=True)
+        logger.info(f"Config directory created/verified: {config_dir}")
 
+        # Устанавливаем права на директорию
+        os.chmod(config_dir, 0o755)
+        
         cookie_file = os.path.join(config_dir, 'youtube.cookies')
-        try:
-            with open(cookie_file, 'w') as f:
-                json.dump(cookies, f, indent=2)
-            logger.info(f"Cookies saved to {cookie_file}")
+        logger.info(f"Saving cookies to: {cookie_file}")
+        
+        # Сохраняем куки в файл
+        with open(cookie_file, 'w') as f:
+            json.dump(cookies, f, indent=2)
+            logger.info("Cookies successfully saved to file")
             
-            # Устанавливаем права на файл
-            os.chmod(cookie_file, 0o666)
+        # Проверяем, что файл создан и содержит данные
+        if os.path.exists(cookie_file):
+            file_size = os.path.getsize(cookie_file)
+            logger.info(f"Cookie file created successfully. Size: {file_size} bytes")
+        else:
+            raise FileNotFoundError("Cookie file was not created")
             
-            # Обновляем куки в youtube_api
-            youtube_api.set_session_cookies(cookies)
-            
-            return jsonify({
-                'success': True,
-                'message': 'Cookies saved and applied successfully'
-            })
-                
-        except Exception as e:
-            logger.error(f"Error writing cookie file: {e}")
-            return jsonify({'error': f'Failed to save cookies: {str(e)}'}), 500
-
+        return jsonify({
+            'success': True,
+            'message': 'Cookies saved successfully',
+            'file': cookie_file
+        })
+        
     except Exception as e:
         logger.error(f"Error in save-cookies: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
@@ -429,11 +436,29 @@ def check_auth():
         logger.error(f"Error checking auth: {e}")
         return jsonify({'authorized': False, 'error': str(e)})
 
+# Правильная настройка CORS для всех API endpoints
 CORS(app, resources={
     r"/api/*": {
-        "origins": "*",  # Разрешаем все источники для тестирования
-        "supports_credentials": True,  # Поддержка credentials
-        "methods": ["GET", "POST", "OPTIONS"]  # Разрешенные методы
+        "origins": [
+            "http://localhost:8080",          # для разработки
+            "http://localhost:5000",          # для разработки
+            "http://127.0.0.1:8080",         # для разработки
+            "https://your-production-domain.com"  # для продакшена
+        ],
+        "supports_credentials": True,         # Важно! Разрешаем передачу куков
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": [
+            "Content-Type", 
+            "Authorization",
+            "Access-Control-Allow-Credentials",
+            "Access-Control-Allow-Origin"
+        ],
+        "expose_headers": [
+            "Content-Range", 
+            "X-Content-Range"
+        ],
+        "credentials": True,                  # Важно! Разрешаем аутентификацию
+        "max_age": 3600                      # Кэширование preflight запросов
     }
 })
 

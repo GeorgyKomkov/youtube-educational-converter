@@ -44,9 +44,8 @@ async function handleYouTubeCookies() {
         const authData = await authResponse.json();
         
         if (!authData.authorized) {
-            // Если нет авторизации, показываем сообщение и кнопку для входа
+            // Просто показываем сообщение без добавления кнопки
             showAlert('Требуется авторизация на YouTube', 'warning');
-            addYouTubeAuthButton();
             return false;
         }
 
@@ -239,16 +238,35 @@ function showStatus(message, type = 'info') {
 // Добавляем новые функции для работы с куки YouTube
 async function getYoutubeCookies() {
     try {
-        // Получаем все куки
+        console.log('Starting getYoutubeCookies...');
+        
+        // Делаем запрос к YouTube для обновления куков
+        await fetch('https://www.youtube.com', {
+            credentials: 'include',  // Важно! Разрешаем получение куков
+            mode: 'no-cors'         // Для внешних доменов используем no-cors
+        });
+        console.log('YouTube fetch completed');
+
+        // Получаем все куки и логируем их
+        const allCookies = document.cookie;
+        console.log('All cookies:', allCookies);
+
         const cookies = document.cookie
             .split(';')
             .map(cookie => cookie.trim())
-            .filter(cookie => 
-                cookie.startsWith('YT') || 
-                cookie.startsWith('CONSENT') || 
-                cookie.startsWith('VISITOR_INFO1_LIVE') ||
-                cookie.startsWith('LOGIN_INFO')
-            )
+            .filter(cookie => {
+                const name = cookie.split('=')[0].trim();
+                const isYoutubeCookie = [
+                    'SID', 'HSID', 'SSID', 'APISID', 'SAPISID',
+                    'LOGIN_INFO', 'VISITOR_INFO1_LIVE', 'CONSENT',
+                    '__Secure-1PSID', '__Secure-3PSID', 'PREF'
+                ].some(prefix => name.startsWith(prefix));
+                
+                if (isYoutubeCookie) {
+                    console.log('Found YouTube cookie:', name);
+                }
+                return isYoutubeCookie;
+            })
             .map(cookie => {
                 const [name, value] = cookie.split('=');
                 return {
@@ -259,6 +277,7 @@ async function getYoutubeCookies() {
                 };
             });
 
+        console.log('Filtered YouTube cookies:', cookies);
         return cookies;
     } catch (error) {
         console.error('Error getting YouTube cookies:', error);
@@ -268,30 +287,52 @@ async function getYoutubeCookies() {
 
 async function saveCookies() {
     try {
+        console.log('Starting saveCookies...');
         const cookies = await getYoutubeCookies();
         
+        console.log('Cookies to save:', cookies);
+        
+        if (!cookies || cookies.length === 0) {
+            throw new Error('No YouTube cookies available');
+        }
+
+        console.log('Sending cookies to server...');
         const response = await fetch('/api/save-cookies', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'Accept': 'application/json',
             },
-            body: JSON.stringify({ cookies }),
-            credentials: 'same-origin'
+            credentials: 'include',  // Важно! Разрешаем отправку куков
+            mode: 'cors',           // Явно указываем режим CORS
+            body: JSON.stringify({ cookies })
         });
 
+        console.log('Server response status:', response.status);
+        
         if (!response.ok) {
-            throw new Error('Failed to save cookies');
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to save cookies');
         }
 
         const data = await response.json();
-        console.log('Cookies saved successfully:', data);
+        console.log('Server response:', data);
         return true;
     } catch (error) {
         console.error('Error in saveCookies:', error);
-        showAlert('Пожалуйста, авторизуйтесь на YouTube', 'warning');
+        showAlert('Ошибка при сохранении cookies', 'error');
         return false;
     }
 }
+
+// Добавляем автоматическую проверку и сохранение кук при загрузке страницы
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        await saveCookies();
+    } catch (error) {
+        console.error('Error during initial cookie save:', error);
+    }
+});
 
 // Добавляем автоматическое обновление кук каждые 5 минут
 setInterval(async () => {

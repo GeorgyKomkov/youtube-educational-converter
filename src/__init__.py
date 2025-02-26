@@ -63,10 +63,11 @@ CACHE_DIR = ROOT_DIR / 'cache'
 LOG_DIR = ROOT_DIR / 'logs'
 
 # Создание необходимых директорий
-for directory in [TEMP_DIR, OUTPUT_DIR, VIDEO_DIR, CACHE_DIR, LOG_DIR]:
+for directory in [TEMP_DIR, OUTPUT_DIR, VIDEO_DIR, CACHE_DIR, LOG_DIR, ROOT_DIR / 'config']:
     try:
         directory.mkdir(exist_ok=True, parents=True)
-        print(f"Created directory: {directory}")  # Отладочный вывод
+        os.chmod(directory, 0o755)  # Установка прав доступа
+        print(f"Created directory with permissions: {directory}")
     except Exception as e:
         print(f"Error creating directory {directory}: {e}")
 

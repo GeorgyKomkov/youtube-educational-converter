@@ -197,11 +197,15 @@ class YouTubeAPI:
     def _load_cookies(self):
         """Загрузка cookies из файла"""
         try:
-            cookie_path = Path('config/youtube.cookies')
-            if cookie_path.exists():
-                with open(cookie_path, 'r') as f:
+            # Используем тот же путь, что и при сохранении
+            cookie_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'youtube.cookies')
+            self.logger.info(f"Loading cookies from: {cookie_file}")  # Добавим лог
+            
+            if os.path.exists(cookie_file):
+                with open(cookie_file, 'r') as f:
                     return json.load(f)
+            self.logger.warning("Cookie file not found")  # Добавим лог
             return None
         except Exception as e:
-            self.logger.error(f"Error loading cookies: {e}")
+            self.logger.error(f"Error loading cookies: {e}", exc_info=True)  # Добавим stack trace
             return None
