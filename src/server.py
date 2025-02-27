@@ -24,6 +24,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import socket
 from celery.result import AsyncResult
 from flask_cors import CORS
+import requests
 
 # Импортируем нужные модули
 from .youtube_api import YouTubeAPI
@@ -435,6 +436,62 @@ def check_auth():
     except Exception as e:
         logger.error(f"Error checking auth: {e}")
         return jsonify({'authorized': False, 'error': str(e)})
+
+@app.route('/api/get-youtube-cookies', methods=['GET'])
+def get_youtube_cookies():
+    try:
+        # Создаем сессию с сохранением куков
+        session = requests.Session()
+        
+        # Делаем запрос к YouTube
+        response = session.get('https://www.youtube.com', timeout=10)
+        
+        if response.status_code != 200:
+            return jsonify({'error': 'Failed to connect to YouTube'}), 500
+            
+        # Получаем куки из сессии
+        cookies = session.cookies.get_dict()
+        
+        # Фильтруем только нужные куки
+        youtube_cookies = {
+            name: value for name, value in cookies.items()
+            if name in ['LOGIN_INFO', 'VISITOR_INFO1_LIVE', 'CONSENT', 'SID', 'HSID']
+        }
+        
+        # Сохраняем куки в файл
+        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config')
+        os.makedirs(config_dir, exist_ok=True)
+        
+        cookie_file = os.path.join(config_dir, 'youtube.cookies')
+        with open(cookie_file, 'w') as f:
+            json.dump(youtube_cookies, f)
+            
+        return jsonify({
+            'success': True,
+            'cookies': youtube_cookies
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+def check_youtube_auth(cookies):
+    """Проверка валидности куков YouTube"""
+    try:
+        session = requests.Session()
+        
+        # Добавляем куки в сессию
+        for name, value in cookies.items():
+            session.cookies.set(name, value, domain='.youtube.com')
+            
+        # Пробуем получить данные профиля
+        response = session.get('https://www.youtube.com/feed/subscriptions')
+        
+        # Если нет редиректа на логин, значит куки валидные
+        return 'signin' not in response.url
+        
+    except Exception as e:
+        logger.error(f"Error checking YouTube auth: {e}")
+        return False
 
 # Правильная настройка CORS для всех API endpoints
 CORS(app, resources={
