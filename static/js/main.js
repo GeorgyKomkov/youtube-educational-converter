@@ -238,43 +238,62 @@ function showStatus(message, type = 'info') {
 // Добавляем новые функции для работы с куки YouTube
 async function getYoutubeCookies() {
     try {
+        console.log('Starting getYoutubeCookies request...');
+        
         const response = await fetch('/api/get-youtube-cookies', {
             method: 'GET',
-            credentials: 'include'
+            credentials: 'include',
+            headers: {
+                'Accept': 'application/json'
+            }
         });
         
+        console.log('Server response status:', response.status);
+        
+        // Если статус не 200, получаем текст ошибки
         if (!response.ok) {
-            throw new Error('Failed to get cookies from server');
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to get cookies from server');
         }
         
         const data = await response.json();
-        console.log('Cookies received from server:', data);
+        console.log('Server response data:', data);
+        
+        if (!data.cookies || Object.keys(data.cookies).length === 0) {
+            throw new Error('No cookies received from server');
+        }
         
         return data.cookies;
     } catch (error) {
-        console.error('Error getting cookies:', error);
+        console.error('Error in getYoutubeCookies:', error);
+        showAlert('Не удалось получить куки YouTube: ' + error.message, 'error');
         return null;
     }
 }
 
 async function saveCookies() {
     try {
+        console.log('Starting saveCookies...');
         const cookies = await getYoutubeCookies();
+        
         if (!cookies) {
-            showAlert('Не удалось получить куки YouTube', 'error');
+            console.error('No cookies returned from getYoutubeCookies');
             return false;
         }
         
-        console.log('Cookies saved successfully');
+        console.log('Cookies received:', cookies);
         return true;
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Error in saveCookies:', error);
         return false;
     }
 }
 
-// Проверяем при загрузке страницы
-document.addEventListener('DOMContentLoaded', saveCookies);
+// При загрузке страницы
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('Page loaded, checking cookies...');
+    await saveCookies();
+});
 
 // Добавляем автоматическое обновление кук каждые 5 минут
 setInterval(async () => {
