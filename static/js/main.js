@@ -238,116 +238,83 @@ function showStatus(message, type = 'info') {
 // Добавляем новые функции для работы с куки YouTube
 async function getYoutubeCookies() {
     try {
-        console.log('Starting getYoutubeCookies...');
-        
-        // Создаем iframe для доступа к кукам YouTube
-        const iframe = document.createElement('iframe');
-        iframe.src = 'https://www.youtube.com';
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-
-        // Ждем загрузки iframe
-        await new Promise((resolve) => {
-            iframe.onload = resolve;
+        // Сначала делаем запрос к YouTube, чтобы обновить куки
+        console.log('Fetching YouTube to refresh cookies...');
+        await fetch('https://www.youtube.com', {
+            credentials: 'include',  // Важно! Разрешаем отправку кук
+            mode: 'no-cors'         // Используем no-cors для cross-origin запросов
         });
 
-        console.log('YouTube iframe loaded');
+        // Проверяем, есть ли у нас доступ к кукам
+        const allCookies = document.cookie;
+        console.log('All available cookies:', allCookies);
 
-        // Пытаемся получить куки через iframe
-        const cookies = await new Promise((resolve) => {
-            // Даем время на установку кук
-            setTimeout(() => {
-                const cookieString = document.cookie;
-                console.log('Raw cookies from iframe:', cookieString);
-                
-                const youtubeCookies = cookieString
-                    .split(';')
-                    .map(cookie => cookie.trim())
-                    .filter(cookie => {
-                        const name = cookie.split('=')[0].trim();
-                        return [
-                            'SID', 'HSID', 'SSID', 'APISID', 'SAPISID',
-                            'LOGIN_INFO', 'VISITOR_INFO1_LIVE', 'CONSENT',
-                            '__Secure-1PSID', '__Secure-3PSID', 'PREF',
-                            'YSC', '__Secure-1PAPISID', '__Secure-3PAPISID'
-                        ].some(prefix => name.startsWith(prefix));
-                    })
-                    .map(cookie => {
-                        const [name, value] = cookie.split('=').map(part => part.trim());
-                        return {
-                            name: name,
-                            value: value,
-                            domain: '.youtube.com',
-                            path: '/'
-                        };
-                    });
-
-                // Удаляем iframe
-                document.body.removeChild(iframe);
-                
-                console.log('Filtered YouTube cookies:', youtubeCookies);
-                resolve(youtubeCookies);
-            }, 2000); // Даем 2 секунды на загрузку
-        });
-
-        if (!cookies || cookies.length === 0) {
-            throw new Error('No YouTube cookies found after filtering');
+        if (!allCookies) {
+            console.log('No cookies available. This might be due to browser security settings.');
+            return [];
         }
 
-        return cookies;
+        const youtubeCookies = allCookies
+            .split(';')
+            .map(cookie => cookie.trim())
+            .filter(cookie => {
+                const name = cookie.split('=')[0].trim();
+                const isYoutubeCookie = ['LOGIN_INFO', 'VISITOR_INFO1_LIVE', 'CONSENT'].some(
+                    prefix => name.startsWith(prefix)
+                );
+                if (isYoutubeCookie) {
+                    console.log('Found YouTube cookie:', name);
+                }
+                return isYoutubeCookie;
+            })
+            .map(cookie => {
+                const [name, value] = cookie.split('=');
+                return {
+                    name: name.trim(),
+                    value: value,
+                    domain: '.youtube.com',
+                    path: '/'
+                };
+            });
+
+        console.log('Filtered YouTube cookies:', youtubeCookies);
+        return youtubeCookies;
     } catch (error) {
-        console.error('Error in getYoutubeCookies:', error);
-        throw new Error('No YouTube cookies available');
+        console.error('Error accessing cookies:', error);
+        return [];
     }
 }
 
 async function saveCookies() {
     try {
-        console.log('Starting saveCookies...');
+        const cookies = await getYoutubeCookies();
         
-        // Проверяем авторизацию на YouTube
-        const authResponse = await fetch('/api/check-auth', {
-            credentials: 'include'
-        });
-        const authData = await authResponse.json();
-        
-        if (!authData.authorized) {
-            // Открываем YouTube в новом окне для авторизации
-            const authWindow = window.open('https://www.youtube.com', '_blank');
-            showAlert('Пожалуйста, авторизуйтесь на YouTube и затем закройте вкладку', 'info');
+        if (cookies.length === 0) {
+            console.log('No YouTube cookies found. Redirecting to YouTube...');
+            showAlert('Для работы приложения требуется авторизация на YouTube. Откроется новая вкладка.', 'info');
             
-            // Ждем закрытия окна авторизации
-            await new Promise(resolve => {
-                const checkClosed = setInterval(() => {
-                    if (authWindow.closed) {
-                        clearInterval(checkClosed);
-                        resolve();
-                    }
-                }, 1000);
-            });
+            // Открываем YouTube в новой вкладке
+            window.open('https://www.youtube.com', '_blank');
+            return false;
         }
 
-        const cookies = await getYoutubeCookies();
-        console.log('Cookies to save:', cookies);
-
+        console.log('Sending cookies to server:', cookies);
         const response = await fetch('/api/save-cookies', {
             method: 'POST',
-            headers: {
+            headers: { 
                 'Content-Type': 'application/json',
-                'Accept': 'application/json',
+                'Accept': 'application/json'
             },
-            credentials: 'include',
-            mode: 'cors',
+            credentials: 'include',  // Важно для CORS
             body: JSON.stringify({ cookies })
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to save cookies');
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to save cookies');
         }
 
-        const data = await response.json();
-        console.log('Cookies saved successfully:', data);
+        console.log('Cookies saved successfully');
         return true;
     } catch (error) {
         console.error('Error in saveCookies:', error);
@@ -356,12 +323,18 @@ async function saveCookies() {
     }
 }
 
-// Добавляем автоматическую проверку и сохранение кук при загрузке страницы
+// При загрузке страницы
 document.addEventListener('DOMContentLoaded', async () => {
+    console.log('Page loaded, checking cookies...');
     try {
-        await saveCookies();
+        const result = await saveCookies();
+        if (result) {
+            console.log('Initial cookie save successful');
+        } else {
+            console.log('Initial cookie save failed');
+        }
     } catch (error) {
-        console.error('Error during initial cookie save:', error);
+        console.error('Error during initial cookie check:', error);
     }
 });
 
