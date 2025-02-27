@@ -439,44 +439,54 @@ def check_auth():
 
 @app.route('/api/get-youtube-cookies', methods=['GET', 'OPTIONS'])
 def get_youtube_cookies():
-    # Обработка CORS preflight запросов
-    if request.method == 'OPTIONS':
-        return '', 204
-        
     try:
         logger.info("Starting YouTube cookies request...")
         session = requests.Session()
         
-        headers = {
+        # Сначала делаем запрос к Google для авторизации
+        google_response = session.get('https://accounts.google.com', headers={
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-        }
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        })
         
-        # Пробуем получить куки
-        response = session.get('https://www.youtube.com', headers=headers, timeout=10)
-        logger.info(f"YouTube response status: {response.status_code}")
+        # Затем делаем запрос к YouTube
+        youtube_response = session.get('https://www.youtube.com', headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        })
         
+        # Получаем все куки
         cookies = session.cookies.get_dict()
-        logger.info(f"Raw cookies: {cookies}")
+        logger.info(f"All cookies received: {cookies}")
         
-        if not cookies:
-            logger.warning("No cookies received from YouTube")
-            return jsonify({'error': 'No YouTube cookies found'}), 404
+        # Форматируем куки для сохранения
+        formatted_cookies = []
+        for name, value in cookies.items():
+            cookie = {
+                'name': name,
+                'value': value,
+                'domain': '.youtube.com' if 'youtube' in name.lower() else '.google.com',
+                'path': '/'
+            }
+            formatted_cookies.append(cookie)
             
-        # Сохраняем все полученные куки
+        if not formatted_cookies:
+            logger.warning("No cookies found")
+            return jsonify({'error': 'No cookies found'}), 404
+            
+        # Сохраняем в файл
         config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config')
         os.makedirs(config_dir, exist_ok=True)
         
         cookie_file = os.path.join(config_dir, 'youtube.cookies')
         with open(cookie_file, 'w') as f:
-            json.dump(cookies, f, indent=2)
+            json.dump(formatted_cookies, f, indent=2)
             
-        logger.info(f"Saved cookies to {cookie_file}")
+        logger.info(f"Saved {len(formatted_cookies)} cookies to {cookie_file}")
             
         return jsonify({
             'success': True,
-            'cookies': cookies
+            'cookies': formatted_cookies
         })
         
     except Exception as e:
