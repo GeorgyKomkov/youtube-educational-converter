@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
 RUN pip install --upgrade pip
 
 # Создание директорий
-RUN mkdir -p /app/{temp,output,videos,cache,logs}
+RUN mkdir -p /app/{temp,output,videos,cache,logs,config}
 
 WORKDIR /app
 
@@ -29,6 +29,6 @@ COPY . .
 
 # Установка прав
 RUN chmod -R 755 /app && \
-    chmod 777 /app/{temp,output,videos,cache,logs}
+    chmod 777 /app/{temp,output,videos,cache,logs,config}
 
 CMD ["./start.sh"]
