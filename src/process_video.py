@@ -118,6 +118,7 @@ class VideoProcessor:
         self.config = config
         self.temp_dir = Path(config['temp_dir'])
         self.temp_dir.mkdir(exist_ok=True)
+        self.logger = logging.getLogger(__name__)  # Добавляем инициализацию логгера
         try:
             # Создаем временные директории если их нет
             output_dir = self.config.get('output_dir', '/app/output')
@@ -126,19 +127,19 @@ class VideoProcessor:
             os.makedirs(output_dir, exist_ok=True)
             os.chmod(output_dir, 0o777)
             
-            logger.info(f"Directories created/checked: temp_dir={self.temp_dir}, output_dir={output_dir}")
+            self.logger.info(f"Directories created/checked: temp_dir={self.temp_dir}, output_dir={output_dir}")
             
             # Инициализация модели
             model_name = self.config.get('transcription', {}).get('model', 'tiny')
-            logger.info(f"Loading whisper model: {model_name}")
+            self.logger.info(f"Loading whisper model: {model_name}")
             
             self.whisper_model = load_model(
                 name=model_name,
                 device="cuda" if torch.cuda.is_available() else "cpu"
             )
-            logger.info("Whisper model loaded successfully")
+            self.logger.info("Whisper model loaded successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize VideoProcessor: {e}")
+            self.logger.error(f"Failed to initialize VideoProcessor: {e}")
             raise RuntimeError(f"Initialization failed: {e}")
 
     def download_video(self, video_url):
@@ -220,7 +221,7 @@ class VideoProcessor:
                 self.logger.info("Trying to download directly with yt-dlp")
                 
                 # Получаем путь к файлу с куками
-                cookie_file = os.path.join('config', 'youtube_netscape.cookies')
+                cookie_file = '/app/config/youtube_netscape.cookies'  # Используем абсолютный путь
                 
                 ydl_opts = {
                     'format': 'best',
@@ -334,6 +335,26 @@ class VideoProcessor:
         except Exception as e:
             self.logger.error(f"Error generating PDF: {e}")
             raise
+
+    def _extract_video_id(self, url):
+        """Извлечение ID видео из URL"""
+        try:
+            import re
+            patterns = [
+                r'(?:v=|\/)([0-9A-Za-z_-]{11}).*',
+                r'youtu\.be\/([0-9A-Za-z_-]{11})',
+                r'youtube\.com\/embed\/([0-9A-Za-z_-]{11})'
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, url)
+                if match:
+                    return match.group(1)
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Failed to extract video ID: {e}")
+            return None
 
 def extract_audio(video_path, config):
     """Извлечение аудио из видео"""

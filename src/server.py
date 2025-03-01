@@ -283,22 +283,22 @@ def get_task_status(task_id):
 def save_cookies():
     """Сохранение куки YouTube в файл"""
     logger.info("=== Starting save-cookies request ===")
-    
+
     if request.method == 'OPTIONS':
         response = app.make_default_options_response()
         return response
-        
+
     try:
         data = request.get_json()
         logger.info(f"Received cookies request data: {data is not None}")
-        
+
         if not data or 'cookies' not in data:
             logger.error("No cookies in request data")
             return jsonify({'error': 'No cookies provided'}), 400
-            
+
         cookies = data.get('cookies')
         logger.info(f"Number of cookies received: {len(cookies)}")
-        
+
         # Создаем директорию config если её нет
         config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config')
         os.makedirs(config_dir, exist_ok=True)
@@ -306,28 +306,32 @@ def save_cookies():
 
         # Устанавливаем права на директорию
         os.chmod(config_dir, 0o755)
-        
+
         cookie_file = os.path.join(config_dir, 'youtube.cookies')
         logger.info(f"Saving cookies to: {cookie_file}")
-        
+
         # Сохраняем куки в файл
         with open(cookie_file, 'w') as f:
             json.dump(cookies, f, indent=2)
             logger.info("Cookies successfully saved to file")
-            
+
         # Проверяем, что файл создан и содержит данные
         if os.path.exists(cookie_file):
             file_size = os.path.getsize(cookie_file)
             logger.info(f"Cookie file created successfully. Size: {file_size} bytes")
         else:
             raise FileNotFoundError("Cookie file was not created")
-            
+
+        # Передаем куки в YouTubeAPI
+        youtube_api.set_session_cookies(cookies)
+        logger.info("Cookies passed to YouTubeAPI")
+
         return jsonify({
             'success': True,
             'message': 'Cookies saved successfully',
             'file': cookie_file
         })
-        
+
     except Exception as e:
         logger.error(f"Error in save-cookies: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
