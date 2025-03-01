@@ -234,7 +234,11 @@ class VideoProcessor:
             if not os.path.exists(video_path):
                 raise FileNotFoundError(f"Video file not found at {video_path}")
             
-            # Дальнейшая обработка видео...
+            return video_path  # Возвращаем путь к скачанному видео
+            
+        except Exception as e:
+            self.logger.error(f"Error processing video: {e}")
+            raise
 
     def _check_disk_space(self, video_path):
         try:
