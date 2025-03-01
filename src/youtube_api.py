@@ -115,12 +115,40 @@ class YouTubeAPI:
             if not video_id:
                 raise ValueError("Invalid YouTube URL")
 
-            # Проверяем наличие куки
-            cookie_file = Path('config/youtube.cookies')
-            if not cookie_file.exists():
-                self.logger.warning("No cookie file found")
-                if not self.cookies:
-                    raise ValueError("YouTube authorization required")
+            # Загружаем куки
+            cookies = self._load_cookies()
+            self.logger.info(f"Using {len(cookies) if cookies else 0} cookies for download")
+
+            # Создаем временный файл с куками в формате Netscape
+            cookie_jar = None
+            if cookies:
+                try:
+                    import tempfile
+                    cookie_jar = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
+                    
+                    # Записываем куки в формате Netscape
+                    with open(cookie_jar.name, 'w') as f:
+                        f.write("# Netscape HTTP Cookie File\n")
+                        for cookie in cookies:
+                            domain = cookie.get('domain', '.youtube.com')
+                            flag = "TRUE"
+                            path = cookie.get('path', '/')
+                            secure = "TRUE" if 'Secure' in cookie.get('name', '') else "FALSE"
+                            expiry = "0"  # Сессионная кука
+                            name = cookie.get('name', '')
+                            value = cookie.get('value', '')
+                            
+                            f.write(f"{domain}\t{flag}\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n")
+                            
+                    self.logger.info(f"Created cookie jar at {cookie_jar.name}")
+                except Exception as e:
+                    self.logger.error(f"Failed to create cookie jar: {e}")
+                    if cookie_jar:
+                        try:
+                            os.unlink(cookie_jar.name)
+                        except:
+                            pass
+                    cookie_jar = None
 
             # Настройки для yt-dlp
             ydl_opts = {
@@ -128,22 +156,26 @@ class YouTubeAPI:
                 'outtmpl': output_path,
                 'quiet': True,
                 'no_warnings': True,
-                'cookiefile': str(cookie_file) if cookie_file.exists() else None,
+                'cookiefile': cookie_jar.name if cookie_jar else None,
                 'nocheckcertificate': True
             }
-
-            # Добавляем куки напрямую, если файл недоступен
-            if not cookie_file.exists() and self.cookies:
-                ydl_opts['cookies'] = self.cookies
-                self.logger.info("Using session cookies for download")
             
             # Скачиваем видео
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                self.logger.info(f"Starting download of {url}")
                 ydl.download([url])
                 self.logger.info(f"Video downloaded successfully: {url}")
                 
+            # Удаляем временный файл с куками
+            if cookie_jar:
+                try:
+                    os.unlink(cookie_jar.name)
+                    self.logger.info(f"Removed temporary cookie jar")
+                except Exception as e:
+                    self.logger.error(f"Failed to remove cookie jar: {e}")
+                
         except Exception as e:
-            self.logger.error(f"Failed to download video: {e}")
+            self.logger.error(f"Failed to download video: {e}", exc_info=True)
             raise
 
     def _extract_video_id(self, url):
@@ -199,13 +231,36 @@ class YouTubeAPI:
         try:
             # Используем тот же путь, что и при сохранении
             cookie_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'youtube.cookies')
-            self.logger.info(f"Loading cookies from: {cookie_file}")  # Добавим лог
+            self.logger.info(f"Loading cookies from: {cookie_file}")
             
             if os.path.exists(cookie_file):
                 with open(cookie_file, 'r') as f:
-                    return json.load(f)
-            self.logger.warning("Cookie file not found")  # Добавим лог
-            return None
+                    cookies = json.load(f)
+                    self.logger.info(f"Loaded {len(cookies)} cookies")
+                    
+                    # Проверяем формат куков
+                    if isinstance(cookies, list) and len(cookies) > 0 and 'name' in cookies[0]:
+                        # Куки в формате списка объектов
+                        self.logger.info(f"Cookie format: list of objects")
+                        return cookies
+                    elif isinstance(cookies, dict):
+                        # Куки в формате словаря
+                        self.logger.info(f"Cookie format: dictionary")
+                        formatted_cookies = []
+                        for name, value in cookies.items():
+                            formatted_cookies.append({
+                                'name': name,
+                                'value': value,
+                                'domain': '.youtube.com',
+                                'path': '/'
+                            })
+                        return formatted_cookies
+                    else:
+                        self.logger.warning(f"Unknown cookie format: {type(cookies)}")
+                        return None
+            else:
+                self.logger.warning("Cookie file not found")
+                return None
         except Exception as e:
-            self.logger.error(f"Error loading cookies: {e}", exc_info=True)  # Добавим stack trace
+            self.logger.error(f"Error loading cookies: {e}", exc_info=True)
             return None
