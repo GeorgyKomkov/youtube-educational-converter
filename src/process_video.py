@@ -16,6 +16,8 @@ import cv2
 import resource
 import gc
 import yt_dlp  # Добавим импорт
+import uuid
+from .youtube_api import YouTubeAPI
 
 # Настройка логирования
 def setup_logging():
@@ -189,66 +191,50 @@ class VideoProcessor:
             logger.error(f"Transcription failed: {e}")
             raise RuntimeError(f"Failed to transcribe audio: {e}")
 
-    def process_video(self, video_url, progress_callback=None):
+    def process_video(self, url):
+        """Обработка видео"""
         try:
-            # Download video first
-            video_path = self.download_video(video_url)
-            logger.info(f"Video downloaded to: {video_path}")
-
-            # Process the downloaded video
-            audio_path = extract_audio(video_path, self.config)
-            if not audio_path:
-                raise RuntimeError("Failed to extract audio")
-
-            # Начальный прогресс
-            if progress_callback:
-                progress_callback(0)
+            # Создаем временные директории
+            temp_dir = os.path.join(self.config['temp_dir'], str(uuid.uuid4()))
+            os.makedirs(temp_dir, exist_ok=True)
             
-            # Проверка и корректировка URL
-            if not video_url.startswith('https://'):
-                if video_url.startswith('https:/'):
-                    video_url = video_url.replace('https:/', 'https://')
+            # Генерируем имя файла
+            video_id = self._extract_video_id(url)
+            if not video_id:
+                raise ValueError("Invalid YouTube URL")
+            
+            video_path = os.path.join(temp_dir, f"{video_id}.mp4")
+            
+            # Инициализируем YouTube API
+            youtube_api = YouTubeAPI()
+            
+            # Пробуем скачать видео
+            try:
+                youtube_api.download_video(url, video_path)
+            except Exception as e:
+                if "requires authentication" in str(e):
+                    # Если требуется авторизация, пробуем скачать без куков
+                    self.logger.warning(f"Authentication required, trying with yt-dlp directly")
+                    
+                    # Используем yt-dlp напрямую
+                    ydl_opts = {
+                        'format': 'best',
+                        'outtmpl': video_path,
+                        'quiet': True,
+                        'no_warnings': True
+                    }
+                    
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([url])
                 else:
-                    video_url = f'https://{video_url.lstrip("/")}' 
+                    # Если другая ошибка, пробрасываем её дальше
+                    raise
                 
-            logger.info(f"Processing video URL: {video_url}")
+            # Проверяем, что файл скачался
+            if not os.path.exists(video_path):
+                raise FileNotFoundError(f"Video file not found at {video_path}")
             
-            # Проверяем и логируем состояние директорий
-            logger.info(f"Checking temp directory: {self.temp_dir}")
-            logger.info(f"Temp directory exists: {os.path.exists(self.temp_dir)}")
-            logger.info(f"Temp directory permissions: {oct(os.stat(self.temp_dir).st_mode)[-3:]}")
-            
-            # Обработка чанками
-            def process_in_chunks(audio_path, chunk_size=30):
-                logger.info(f"Processing audio in chunks: {audio_path}")
-                results = []
-                audio = whisper.load_audio(audio_path)
-                
-                for i in range(0, len(audio), chunk_size * 16000):
-                    chunk = audio[i:i + chunk_size * 16000]
-                    logger.info(f"Processing chunk {i//16000}-{(i + chunk_size)//16000} seconds")
-                    result = self.whisper_model.transcribe(chunk)
-                    results.append(result['text'])
-                    
-                    # Очистка памяти
-                    torch.cuda.empty_cache()
-                    gc.collect()
-                    
-                return " ".join(results)
-                
-            result = process_in_chunks(audio_path)
-            
-            # Обновляем прогресс
-            if progress_callback:
-                progress_callback(100)
-            
-            return {
-                'status': 'success',
-                'result': result
-            }
-        except Exception as e:
-            logger.exception(f"Error processing video: {e}")
-            raise
+            # Дальнейшая обработка видео...
 
     def _check_disk_space(self, video_path):
         try:

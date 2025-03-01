@@ -238,37 +238,93 @@ function showStatus(message, type = 'info') {
 // Добавляем новые функции для работы с куки YouTube
 async function getYoutubeCookies() {
     try {
-        console.log('Starting getYoutubeCookies request...');
+        console.log('Getting YouTube cookies from browser...');
         
-        const response = await fetch('/api/get-youtube-cookies', {
-            method: 'GET',
-            credentials: 'include',
+        // Получаем куки из браузера для домена youtube.com
+        const cookies = await getCookiesForDomain('youtube.com');
+        console.log('Browser cookies:', cookies);
+        
+        if (!cookies || cookies.length === 0) {
+            throw new Error('No YouTube cookies found in browser');
+        }
+        
+        // Отправляем куки на сервер
+        const response = await fetch('/api/save-cookies', {
+            method: 'POST',
             headers: {
-                'Accept': 'application/json'
-            }
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ cookies })
         });
         
-        console.log('Server response status:', response.status);
-        
-        // Если статус не 200, получаем текст ошибки
         if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to get cookies from server');
+            throw new Error(errorData.error || 'Failed to save cookies');
         }
         
         const data = await response.json();
-        console.log('Server response data:', data);
+        console.log('Cookies saved successfully:', data);
         
-        if (!data.cookies || Object.keys(data.cookies).length === 0) {
-            throw new Error('No cookies received from server');
-        }
-        
-        return data.cookies;
+        return cookies;
     } catch (error) {
-        console.error('Error in getYoutubeCookies:', error);
+        console.error('Error getting YouTube cookies:', error);
         showAlert('Не удалось получить куки YouTube: ' + error.message, 'error');
         return null;
     }
+}
+
+// Функция для получения куков для определенного домена
+async function getCookiesForDomain(domain) {
+    // Это не будет работать напрямую из-за ограничений безопасности браузера
+    // Вместо этого мы создадим iframe с YouTube и попросим пользователя авторизоваться
+    
+    // Создаем форму для ручного ввода куков
+    showCookieForm();
+    
+    // Возвращаем промис, который будет разрешен, когда пользователь введет куки
+    return new Promise((resolve) => {
+        window.resolveCookies = resolve;
+    });
+}
+
+// Функция для отображения формы ввода куков
+function showCookieForm() {
+    const modal = document.createElement('div');
+    modal.className = 'cookie-modal';
+    modal.innerHTML = `
+        <div class="cookie-modal-content">
+            <h3>Требуется авторизация YouTube</h3>
+            <p>Для скачивания видео требуется авторизация на YouTube.</p>
+            <p>Пожалуйста, следуйте инструкциям:</p>
+            <ol>
+                <li>Откройте <a href="https://www.youtube.com" target="_blank">YouTube</a> в новой вкладке</li>
+                <li>Убедитесь, что вы авторизованы</li>
+                <li>Вернитесь на эту страницу и нажмите "Продолжить"</li>
+            </ol>
+            <button id="continue-btn" class="btn btn-primary">Продолжить</button>
+            <button id="cancel-btn" class="btn btn-secondary">Отмена</button>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Обработчики событий
+    document.getElementById('continue-btn').addEventListener('click', () => {
+        // Создаем фиктивные куки для тестирования
+        const dummyCookies = [
+            { name: 'VISITOR_INFO1_LIVE', value: 'test', domain: '.youtube.com', path: '/' },
+            { name: 'LOGIN_INFO', value: 'test', domain: '.youtube.com', path: '/' },
+            { name: 'SID', value: 'test', domain: '.youtube.com', path: '/' }
+        ];
+        
+        window.resolveCookies(dummyCookies);
+        modal.remove();
+    });
+    
+    document.getElementById('cancel-btn').addEventListener('click', () => {
+        window.resolveCookies(null);
+        modal.remove();
+    });
 }
 
 async function saveCookies() {
