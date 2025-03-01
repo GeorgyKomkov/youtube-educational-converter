@@ -443,13 +443,7 @@ def get_youtube_cookies():
         logger.info("Starting YouTube cookies request...")
         session = requests.Session()
         
-        # Сначала делаем запрос к Google для авторизации
-        google_response = session.get('https://accounts.google.com', headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        })
-        
-        # Затем делаем запрос к YouTube
+        # Делаем запрос к YouTube
         youtube_response = session.get('https://www.youtube.com', headers={
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -459,13 +453,13 @@ def get_youtube_cookies():
         cookies = session.cookies.get_dict()
         logger.info(f"All cookies received: {cookies}")
         
-        # Форматируем куки для сохранения
+        # Форматируем куки для сохранения - все с доменом .youtube.com
         formatted_cookies = []
         for name, value in cookies.items():
             cookie = {
                 'name': name,
                 'value': value,
-                'domain': '.youtube.com' if 'youtube' in name.lower() else '.google.com',
+                'domain': '.youtube.com',  # Всегда используем домен youtube.com
                 'path': '/'
             }
             formatted_cookies.append(cookie)

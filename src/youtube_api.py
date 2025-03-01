@@ -119,10 +119,11 @@ class YouTubeAPI:
             ydl_opts = {
                 'format': 'best',
                 'outtmpl': output_path,
-                'quiet': False,  # Включаем вывод для отладки
-                'no_warnings': False,  # Включаем предупреждения
+                'quiet': True,
+                'no_warnings': True,
                 'nocheckcertificate': True,
-                'verbose': True  # Подробный вывод
+                'ignoreerrors': True,  # Игнорируем ошибки
+                'no_color': True
             }
             
             # Загружаем куки
@@ -150,8 +151,6 @@ class YouTubeAPI:
                         
                 self.logger.info(f"Created cookie jar at {cookie_jar.name}")
                 ydl_opts['cookiefile'] = cookie_jar.name
-            else:
-                self.logger.warning("No cookies available, trying without authentication")
             
             # Скачиваем видео
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
