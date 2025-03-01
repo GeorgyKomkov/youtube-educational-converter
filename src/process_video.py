@@ -18,6 +18,7 @@ import gc
 import yt_dlp  # Добавим импорт
 import uuid
 from .youtube_api import YouTubeAPI
+import json
 
 # Настройка логирования
 def setup_logging():
@@ -209,6 +210,19 @@ class VideoProcessor:
             # Инициализируем YouTube API
             youtube_api = YouTubeAPI()
             
+            # Загружаем куки из файла
+            cookie_file = '/app/config/youtube.cookies'
+            if os.path.exists(cookie_file):
+                try:
+                    with open(cookie_file, 'r') as f:
+                        cookies = json.load(f)
+                        self.logger.info(f"Loaded {len(cookies)} cookies from {cookie_file}")
+                        
+                        # Устанавливаем куки в YouTubeAPI
+                        youtube_api.set_session_cookies(cookies)
+                except Exception as e:
+                    self.logger.error(f"Error loading cookies: {e}")
+
             # Пробуем скачать видео
             try:
                 self.logger.info(f"Attempting to download video {url} to {video_path}")
