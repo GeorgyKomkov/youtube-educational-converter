@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y \
 # Обновление pip
 RUN pip install --upgrade pip
 
-# Создание директорий
-RUN mkdir -p /app/{temp,output,videos,cache,logs,config}
+# Создание директорий (исправленный синтаксис)
+RUN mkdir -p /app/temp /app/output /app/videos /app/cache /app/logs /app/config
 
 WORKDIR /app
 
@@ -27,8 +27,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копирование остальных файлов
 COPY . .
 
-# Установка прав
+# Установка прав (исправленный синтаксис)
 RUN chmod -R 755 /app && \
-    chmod 777 /app/{temp,output,videos,cache,logs,config}
+    chmod 777 /app/temp /app/output /app/videos /app/cache /app/logs /app/config
 
 CMD ["./start.sh"]
