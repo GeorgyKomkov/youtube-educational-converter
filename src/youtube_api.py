@@ -115,58 +115,43 @@ class YouTubeAPI:
             if not video_id:
                 raise ValueError("Invalid YouTube URL")
 
-            # Настройки для yt-dlp
+            # Настройки для yt-dlp с игнорированием ошибок авторизации
             ydl_opts = {
                 'format': 'best',
                 'outtmpl': output_path,
-                'quiet': True,
-                'no_warnings': True,
-                'nocheckcertificate': True,
+                'quiet': False,  # Включаем вывод для отладки
+                'no_warnings': False,  # Включаем предупреждения для отладки
                 'ignoreerrors': True,  # Игнорируем ошибки
-                'no_color': True
+                'skip_download': False,
+                'noplaylist': True,
+                'nocheckcertificate': True,
+                'no_color': True,
+                'verbose': True  # Подробный вывод для отладки
             }
             
-            # Загружаем куки
-            cookies = self._load_cookies()
-            if cookies:
-                self.logger.info(f"Using {len(cookies)} cookies for download")
-                
-                # Создаем временный файл с куками в формате Netscape
-                import tempfile
-                cookie_jar = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
-                
-                # Записываем куки в формате Netscape
-                with open(cookie_jar.name, 'w') as f:
-                    f.write("# Netscape HTTP Cookie File\n")
-                    for cookie in cookies:
-                        domain = cookie.get('domain', '.youtube.com')
-                        flag = "TRUE"
-                        path = cookie.get('path', '/')
-                        secure = "TRUE" if 'Secure' in cookie.get('name', '') else "FALSE"
-                        expiry = "0"  # Сессионная кука
-                        name = cookie.get('name', '')
-                        value = cookie.get('value', '')
-                        
-                        f.write(f"{domain}\t{flag}\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n")
-                        
-                self.logger.info(f"Created cookie jar at {cookie_jar.name}")
-                ydl_opts['cookiefile'] = cookie_jar.name
-            
             # Скачиваем видео
+            self.logger.info(f"Starting download of {url} with yt-dlp")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                self.logger.info(f"Starting download of {url}")
                 ydl.download([url])
-                self.logger.info(f"Video downloaded successfully: {url}")
                 
-            # Удаляем временный файл с куками
-            if cookies and 'cookiefile' in ydl_opts:
-                try:
-                    os.unlink(ydl_opts['cookiefile'])
-                    self.logger.info(f"Removed temporary cookie jar")
-                except Exception as e:
-                    self.logger.error(f"Failed to remove cookie jar: {e}")
+            # Проверяем, что файл скачался
+            if os.path.exists(output_path):
+                self.logger.info(f"Video downloaded successfully: {output_path}")
+                return True
+            else:
+                # Если файл не скачался, пробуем другой формат
+                self.logger.warning(f"File not found at {output_path}, trying different format")
                 
-            return True
+                # Пробуем скачать в формате mp4
+                ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+                    
+                if os.path.exists(output_path):
+                    self.logger.info(f"Video downloaded successfully with alternative format: {output_path}")
+                    return True
+                else:
+                    raise FileNotFoundError(f"Failed to download video to {output_path}")
                 
         except Exception as e:
             self.logger.error(f"Failed to download video: {e}", exc_info=True)

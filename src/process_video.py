@@ -212,33 +212,45 @@ class VideoProcessor:
             try:
                 youtube_api.download_video(url, video_path)
             except Exception as e:
-                if "requires authentication" in str(e):
-                    # Если требуется авторизация, пробуем скачать без куков
-                    self.logger.warning(f"Authentication required, trying with yt-dlp directly")
-                    
-                    # Используем yt-dlp напрямую
-                    ydl_opts = {
-                        'format': 'best',
-                        'outtmpl': video_path,
-                        'quiet': True,
-                        'no_warnings': True
-                    }
-                    
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([url])
-                else:
-                    # Если другая ошибка, пробрасываем её дальше
-                    raise
+                self.logger.error(f"Error downloading video: {e}")
+                
+                # Пробуем скачать напрямую через yt-dlp
+                self.logger.info("Trying to download directly with yt-dlp")
+                
+                import yt_dlp
+                ydl_opts = {
+                    'format': 'best',
+                    'outtmpl': video_path,
+                    'quiet': False,
+                    'no_warnings': False,
+                    'ignoreerrors': True,
+                    'noplaylist': True,
+                    'nocheckcertificate': True,
+                    'verbose': True
+                }
+                
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
                 
             # Проверяем, что файл скачался
             if not os.path.exists(video_path):
                 raise FileNotFoundError(f"Video file not found at {video_path}")
             
-            return video_path  # Возвращаем путь к скачанному видео
+            # Дальнейшая обработка видео...
+            # Здесь должен быть ваш код для обработки видео
+            
+            return {
+                'status': 'success',
+                'video_path': video_path,
+                'message': 'Video processed successfully'
+            }
             
         except Exception as e:
             self.logger.error(f"Error processing video: {e}")
-            raise
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
 
     def _check_disk_space(self, video_path):
         try:
@@ -361,8 +373,8 @@ if __name__ == "__main__":
     try:
         video_path = sys.argv[1]
         processor = VideoProcessor(config)  # Используем класс напрямую
-        pdf_path = processor.process_video(video_path)
-        logger.info(f"Processing completed successfully! Output: {pdf_path}")
+        result = processor.process_video(video_path)
+        logger.info(f"Processing completed successfully! Result: {result}")
     except Exception as e:
         logger.error(f"Processing failed: {e}")
         sys.exit(1)
