@@ -40,8 +40,8 @@ exec gunicorn --bind 0.0.0.0:8080 \
     --workers ${MAX_WORKERS:-2} \
     --threads 4 \
     --timeout 120 \
-    --access-logfile /app/logs/access.log \
-    --error-logfile /app/logs/error.log \
+    --access-logfile - \
+    --error-logfile - \
     --capture-output \
     --enable-stdio-inheritance \
     src.server:app
