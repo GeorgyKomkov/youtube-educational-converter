@@ -210,28 +210,34 @@ class VideoProcessor:
             
             # Пробуем скачать видео
             try:
+                self.logger.info(f"Attempting to download video {url} to {video_path}")
                 youtube_api.download_video(url, video_path)
+                self.logger.info(f"Download completed successfully")
             except Exception as e:
-                self.logger.error(f"Error downloading video: {e}")
+                self.logger.error(f"Error downloading video with YouTubeAPI: {e}")
                 
                 # Пробуем скачать напрямую через yt-dlp
                 self.logger.info("Trying to download directly with yt-dlp")
                 
-                import yt_dlp
+                # Получаем путь к файлу с куками
+                cookie_file = os.path.join('config', 'youtube_netscape.cookies')
+                
                 ydl_opts = {
                     'format': 'best',
                     'outtmpl': video_path,
                     'quiet': False,
                     'no_warnings': False,
                     'ignoreerrors': True,
-                    'noplaylist': True,
+                    'cookiefile': cookie_file if os.path.exists(cookie_file) else None,
                     'nocheckcertificate': True,
-                    'verbose': True
+                    'http_headers': {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    }
                 }
                 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
-                
+            
             # Проверяем, что файл скачался
             if not os.path.exists(video_path):
                 raise FileNotFoundError(f"Video file not found at {video_path}")

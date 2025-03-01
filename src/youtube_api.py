@@ -1,32 +1,37 @@
 import os
-import logging.config
-import redis
-from googleapiclient.discovery import build
-import yt_dlp
+import logging
 import requests
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
-import re
 import json
+import re
 from pathlib import Path
+from googleapiclient.discovery import build
+import redis
+import yt_dlp
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 class YouTubeAPI:
     def __init__(self):
+        """Инициализация YouTube API"""
         self.logger = logging.getLogger(__name__)
         self.config = self._load_config()
-        self._setup_http_session()
+        self._setup_session()
         self._setup_redis()
         self._setup_api()
-        self.cookies = self._load_cookies()  # Загружаем куки при инициализации
+        self.cookies = self._load_cookies()
         
-    def _setup_http_session(self):
-        """Настройка HTTP сессии с retry и timeout"""
+    def _setup_session(self):
+        """Настройка HTTP сессии с retry"""
         self.session = requests.Session()
+        
+        # Настройка retry стратегии
         retry_strategy = Retry(
             total=3,
             backoff_factor=1,
             status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET", "POST"]
         )
+        
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("https://", adapter)
         self.session.mount("http://", adapter)
@@ -115,7 +120,11 @@ class YouTubeAPI:
             if not video_id:
                 raise ValueError("Invalid YouTube URL")
 
-            # Настройки для yt-dlp с игнорированием ошибок авторизации
+            # Получаем путь к файлу с куками в формате Netscape
+            netscape_cookie_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'youtube_netscape.cookies')
+            self.logger.info(f"Using Netscape cookies from: {netscape_cookie_file}")
+            
+            # Настройки для yt-dlp с использованием файла куки
             ydl_opts = {
                 'format': 'best',
                 'outtmpl': output_path,
@@ -126,14 +135,18 @@ class YouTubeAPI:
                 'noplaylist': True,
                 'nocheckcertificate': True,
                 'no_color': True,
-                'verbose': True  # Подробный вывод для отладки
+                'verbose': True,  # Подробный вывод для отладки
+                'cookiefile': netscape_cookie_file if os.path.exists(netscape_cookie_file) else None,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
             }
             
             # Скачиваем видео
             self.logger.info(f"Starting download of {url} with yt-dlp")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
-                
+
             # Проверяем, что файл скачался
             if os.path.exists(output_path):
                 self.logger.info(f"Video downloaded successfully: {output_path}")
@@ -221,7 +234,28 @@ class YouTubeAPI:
                     if isinstance(cookies, list) and len(cookies) > 0 and 'name' in cookies[0]:
                         # Куки в формате списка объектов
                         self.logger.info(f"Cookie format: list of objects")
+                        
+                        # Преобразуем в формат для yt-dlp (Netscape cookie file format)
+                        netscape_cookies = []
+                        for cookie in cookies:
+                            if isinstance(cookie, dict) and 'name' in cookie and 'value' in cookie:
+                                domain = cookie.get('domain', '.youtube.com')
+                                path = cookie.get('path', '/')
+                                secure = 'TRUE' if cookie.get('secure', True) else 'FALSE'
+                                expiry = cookie.get('expiry', 0)
+                                netscape_cookies.append(
+                                    f"{domain}\tTRUE\t{path}\t{secure}\t{expiry}\t{cookie['name']}\t{cookie['value']}"
+                                )
+                        
+                        # Сохраняем в формате Netscape для yt-dlp
+                        netscape_cookie_file = os.path.join(os.path.dirname(cookie_file), 'youtube_netscape.cookies')
+                        with open(netscape_cookie_file, 'w') as nf:
+                            nf.write("\n".join(netscape_cookies))
+                        
+                        self.logger.info(f"Converted cookies to Netscape format at {netscape_cookie_file}")
+                        
                         return cookies
+                        
                     elif isinstance(cookies, dict):
                         # Куки в формате словаря
                         self.logger.info(f"Cookie format: dictionary")
@@ -233,6 +267,25 @@ class YouTubeAPI:
                                 'domain': '.youtube.com',
                                 'path': '/'
                             })
+                        
+                        # Преобразуем в формат для yt-dlp (Netscape cookie file format)
+                        netscape_cookies = []
+                        for cookie in formatted_cookies:
+                            domain = cookie.get('domain', '.youtube.com')
+                            path = cookie.get('path', '/')
+                            secure = 'TRUE'
+                            expiry = 0
+                            netscape_cookies.append(
+                                f"{domain}\tTRUE\t{path}\t{secure}\t{expiry}\t{cookie['name']}\t{cookie['value']}"
+                            )
+                        
+                        # Сохраняем в формате Netscape для yt-dlp
+                        netscape_cookie_file = os.path.join(os.path.dirname(cookie_file), 'youtube_netscape.cookies')
+                        with open(netscape_cookie_file, 'w') as nf:
+                            nf.write("\n".join(netscape_cookies))
+                        
+                        self.logger.info(f"Converted cookies to Netscape format at {netscape_cookie_file}")
+                        
                         return formatted_cookies
                     else:
                         self.logger.warning(f"Unknown cookie format: {type(cookies)}")
