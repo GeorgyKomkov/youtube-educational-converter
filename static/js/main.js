@@ -81,6 +81,12 @@ async function fetchYouTubeCookies() {
     }
 }
 
+// Функция для проверки, является ли URL действительным URL YouTube
+function isValidYouTubeUrl(url) {
+    // Простая проверка на наличие youtube.com в URL
+    return url.includes('youtube.com') || url.includes('youtu.be');
+}
+
 // Обработка отправки формы
 async function handleFormSubmit(event) {
     event.preventDefault();
@@ -88,7 +94,13 @@ async function handleFormSubmit(event) {
     
     const form = event.target;
     const urlInput = form.querySelector('input[name="url"]');
+    if (!urlInput) {
+        console.error('Input with name "url" not found');
+        return;
+    }
+    
     const url = urlInput.value.trim();
+    console.log('Video URL:', url);
     
     if (!url) {
         showAlert('Пожалуйста, введите URL видео', 'warning');
@@ -100,8 +112,6 @@ async function handleFormSubmit(event) {
         showAlert('Пожалуйста, введите корректный URL YouTube', 'warning');
         return;
     }
-    
-    console.log('Video URL:', url);
     
     try {
         // Отправляем запрос на обработку видео
