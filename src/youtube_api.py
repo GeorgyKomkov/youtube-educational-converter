@@ -140,47 +140,28 @@ class YouTubeAPI:
             # Создаем директорию для выходного файла, если она не существует
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            # Пробуем скачать с помощью yt-dlp напрямую
-            self.logger.info("Trying to download directly with yt-dlp")
-            
-            # Базовые опции yt-dlp
-            ydl_opts = {
-                'format': 'best[ext=mp4]/best',
-                'outtmpl': output_path,
-                'noplaylist': True,
-                'verbose': True,
-                'geo_bypass': True,
-                'cookiefile': '/app/config/youtube_netscape.cookies',
-                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
-                'referer': 'https://www.youtube.com/',
-                'http_headers': {
-                    'Accept-Language': 'en-US,en;q=0.9',
-                },
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': ['android', 'web', 'tv', 'ios'],
-                    }
-                }
-            }
-            
+            # Проверяем наличие yt-dlp
             try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
-                    
-                # Проверяем, что файл был скачан
-                if not os.path.exists(output_path):
-                    raise FileNotFoundError(f"Video file not found at {output_path}")
-                    
-                self.logger.info(f"Video downloaded successfully to {output_path}")
-                return output_path
-            except Exception as e:
-                self.logger.error(f"yt-dlp error: {e}")
-                self.logger.info("Trying alternative download method")
-                
-                # Альтернативный метод с использованием --cookies-from-browser
-                self.logger.info(f"Trying alternative download method for {url}")
-                
-                # Создаем команду для yt-dlp
+                subprocess.run(['yt-dlp', '--version'], capture_output=True, check=True)
+                yt_dlp_available = True
+            except (subprocess.SubprocessError, FileNotFoundError):
+                self.logger.warning("yt-dlp not available")
+                yt_dlp_available = False
+            
+            # Проверяем наличие youtube-dl
+            try:
+                subprocess.run(['youtube-dl', '--version'], capture_output=True, check=True)
+                youtube_dl_available = True
+            except (subprocess.SubprocessError, FileNotFoundError):
+                self.logger.warning("youtube-dl not available")
+                youtube_dl_available = False
+            
+            if not yt_dlp_available and not youtube_dl_available:
+                raise Exception("Neither yt-dlp nor youtube-dl is available")
+            
+            # Пробуем скачать с помощью yt-dlp
+            if yt_dlp_available:
+                self.logger.info("Trying to download with yt-dlp")
                 cmd = [
                     'yt-dlp',
                     '--format', 'best[ext=mp4]/best',
@@ -188,54 +169,60 @@ class YouTubeAPI:
                     '--no-playlist',
                     '--verbose',
                     '--geo-bypass',
-                    '--cookies-from-browser', 'chrome',  # Используем куки из Chrome
-                    '--user-agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36',
+                    '--cookies', '/app/config/youtube_netscape.cookies',
+                    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
                     '--referer', 'https://www.youtube.com/',
                     '--add-header', 'Accept-Language:en-US,en;q=0.9',
-                    '--extractor-args', 'youtube:player_client=android,web,tv,ios'
+                    url
                 ]
                 
-                # Добавляем URL
-                cmd.append(url)
-                
                 self.logger.info(f"Running command: {' '.join(cmd)}")
-                
-                # Запускаем процесс
                 process = subprocess.run(cmd, capture_output=True, text=True)
                 
-                # Проверяем результат
-                if process.returncode != 0:
-                    self.logger.error(f"Alternative download failed: {process.stderr}")
-                    
-                    # Пробуем еще один метод - с использованием youtube-dl
-                    self.logger.info(f"Trying youtube-dl as a last resort for {url}")
-                    cmd = [
-                        'youtube-dl',
-                        '--format', 'best[ext=mp4]/best',
-                        '--output', output_path,
-                        '--no-playlist',
-                        '--verbose',
-                        '--geo-bypass',
-                        '--cookies', '/app/config/youtube_netscape.cookies',
-                        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
-                        '--referer', 'https://www.youtube.com/',
-                        '--add-header', 'Accept-Language:en-US,en;q=0.9',
-                        url
-                    ]
-                    
-                    self.logger.info(f"Running command: {' '.join(cmd)}")
-                    process = subprocess.run(cmd, capture_output=True, text=True)
-                    
-                    if process.returncode != 0:
-                        self.logger.error(f"youtube-dl also failed: {process.stderr}")
-                        raise Exception(f"Failed to download video: {process.stderr}")
+                if process.returncode == 0:
+                    self.logger.info(f"Video downloaded successfully to {output_path}")
+                    return output_path
+                else:
+                    self.logger.error(f"yt-dlp download failed: {process.stderr}")
+            
+            # Если yt-dlp не сработал, пробуем youtube-dl
+            if youtube_dl_available:
+                self.logger.info("Trying to download with youtube-dl")
+                cmd = [
+                    'youtube-dl',
+                    '--format', 'best[ext=mp4]/best',
+                    '--output', output_path,
+                    '--no-playlist',
+                    '--verbose',
+                    '--geo-bypass',
+                    '--cookies', '/app/config/youtube_netscape.cookies',
+                    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+                    '--referer', 'https://www.youtube.com/',
+                    '--add-header', 'Accept-Language:en-US,en;q=0.9',
+                    url
+                ]
                 
-                # Проверяем, что файл был скачан
-                if not os.path.exists(output_path):
-                    raise FileNotFoundError(f"Video file not found at {output_path}")
+                self.logger.info(f"Running command: {' '.join(cmd)}")
+                process = subprocess.run(cmd, capture_output=True, text=True)
                 
-                self.logger.info(f"Video downloaded successfully to {output_path} using alternative method")
+                if process.returncode == 0:
+                    self.logger.info(f"Video downloaded successfully to {output_path}")
+                    return output_path
+                else:
+                    self.logger.error(f"youtube-dl download failed: {process.stderr}")
+            
+            # Если оба метода не сработали, пробуем использовать requests
+            self.logger.info("Trying to download directly with requests")
+            response = requests.get(url, stream=True)
+            if response.status_code == 200:
+                with open(output_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                self.logger.info(f"Video downloaded successfully to {output_path}")
                 return output_path
+            
+            # Если все методы не сработали, выбрасываем исключение
+            raise Exception(f"Failed to download video: yt-dlp and youtube-dl failed, and direct download returned {response.status_code}")
         except Exception as e:
             self.logger.error(f"Error downloading video: {e}")
             raise

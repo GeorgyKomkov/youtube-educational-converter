@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     wkhtmltopdf \
     ghostscript \
+    python3-pip \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Обновление pip
@@ -23,6 +25,10 @@ COPY requirements.txt .
 
 # Установка Python зависимостей
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Устанавливаем youtube-dl и yt-dlp
+RUN pip3 install --no-cache-dir youtube-dl
+RUN pip3 install --no-cache-dir yt-dlp
 
 # Копирование остальных файлов
 COPY . .
