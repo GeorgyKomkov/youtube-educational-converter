@@ -57,8 +57,10 @@ class AudioExtractor:
             # Путь к выходному файлу
             output_path = self.temp_dir / f"{Path(video_path).stem}.wav"
             
-            # Конвертируем в моно с низким битрейтом
+            # Добавляем параметры для обработки поврежденных файлов
             command = [
+                'ffmpeg',
+                '-err_detect', 'ignore_err',  # Игнорировать ошибки
                 '-i', str(video_path),
                 '-vn',
                 '-ac', '1',  # моно
@@ -68,9 +70,9 @@ class AudioExtractor:
                 str(output_path)
             ]
             
-            # Используем низкий приоритет процесса
+            # Запускаем процесс
             process = subprocess.Popen(
-                ['nice', '-n', '19', 'ffmpeg'] + command,
+                command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
@@ -78,7 +80,9 @@ class AudioExtractor:
             stdout, stderr = process.communicate()
             
             if process.returncode != 0:
-                raise RuntimeError(f"FFmpeg failed: {stderr.decode()}")
+                logger.error(f"FFmpeg failed: {stderr.decode()}")
+                # Пробуем альтернативный метод
+                return self._extract_alternative(video_path)
                 
             return str(output_path)
             
@@ -118,3 +122,30 @@ class AudioExtractor:
                         logger.warning(f"Failed to remove temporary file {file_path}: {e}")
         except Exception as e:
             logger.error(f"Error cleaning temporary files: {e}")
+
+    def _extract_alternative(self, video_path):
+        """Альтернативный метод извлечения аудио"""
+        try:
+            logger.info("Trying alternative audio extraction method")
+            output_path = self.temp_dir / f"{Path(video_path).stem}_alt.wav"
+            
+            # Используем другие параметры
+            command = [
+                'ffmpeg',
+                '-i', str(video_path),
+                '-vn',
+                '-acodec', 'pcm_s16le',
+                '-ar', '16000',
+                '-ac', '1',
+                str(output_path)
+            ]
+            
+            process = subprocess.run(command, capture_output=True, text=True)
+            
+            if process.returncode != 0:
+                raise RuntimeError(f"Alternative extraction failed: {process.stderr}")
+            
+            return str(output_path)
+        except Exception as e:
+            logger.error(f"Alternative extraction failed: {e}")
+            raise

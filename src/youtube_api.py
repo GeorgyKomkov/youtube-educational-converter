@@ -169,6 +169,8 @@ class YouTubeAPI:
                     '--no-playlist',
                     '--verbose',
                     '--geo-bypass',
+                    '--force-overwrites',
+                    '--ignore-errors',
                     '--cookies', '/app/config/youtube_netscape.cookies',
                     '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
                     '--referer', 'https://www.youtube.com/',
@@ -181,7 +183,12 @@ class YouTubeAPI:
                 
                 if process.returncode == 0:
                     self.logger.info(f"Video downloaded successfully to {output_path}")
-                    return output_path
+                    
+                    # Проверяем, что файл действительно существует и не пустой
+                    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                        return output_path
+                    else:
+                        self.logger.error(f"Output file does not exist or is empty: {output_path}")
                 else:
                     self.logger.error(f"yt-dlp download failed: {process.stderr}")
             

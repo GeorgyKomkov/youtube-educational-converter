@@ -446,6 +446,51 @@ class VideoProcessor:
             self.logger.error(f"Error extracting video ID: {e}")
             return None
 
+    def _download_video(self, url):
+        """Загрузка видео с YouTube"""
+        try:
+            self.logger.info(f"Downloading video from URL: {url}")
+            
+            # Создаем временную директорию
+            temp_dir = os.path.join(self.temp_dir, str(uuid.uuid4()))
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # Настройки для yt-dlp
+            ydl_opts = {
+                'format': 'best[height<=720]',  # Ограничиваем качество
+                'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
+                'noplaylist': True,
+                'quiet': True,
+                'no_warnings': True,
+                'ignoreerrors': True,  # Игнорировать ошибки
+            }
+            
+            # Загружаем видео
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                if not info:
+                    raise ValueError(f"Could not extract video info from URL: {url}")
+                    
+                video_path = os.path.join(temp_dir, f"{info['title']}.{info['ext']}")
+                
+                # Проверяем, что файл существует и не пустой
+                if not os.path.exists(video_path) or os.path.getsize(video_path) == 0:
+                    raise FileNotFoundError(f"Downloaded video file not found or empty: {video_path}")
+                    
+                # Проверяем, что файл можно открыть с помощью OpenCV
+                cap = cv2.VideoCapture(video_path)
+                if not cap.isOpened():
+                    raise ValueError(f"Downloaded video cannot be opened: {video_path}")
+                cap.release()
+                
+                self.logger.info(f"Video downloaded successfully: {video_path}")
+                return video_path
+                
+        except Exception as e:
+            self.logger.error(f"Error downloading video: {e}")
+            # Пробуем альтернативный метод загрузки
+            return self._download_video_alternative(url)
+
 def extract_audio(video_path, config):
     """Извлечение аудио из видео"""
     try:

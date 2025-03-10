@@ -181,6 +181,14 @@ def process_video_task(self, url):
         # Обработка видео
         result = processor.process_video(url)
         logger.info(f"Video processing completed: {result}")
+        
+        if not result or result.get('status') == 'error':
+            logger.error(f"Video processing failed: {result.get('error', 'Unknown error')}")
+            return {
+                'status': 'error',
+                'error': result.get('error', 'Video processing failed')
+            }
+            
         return result
             
     except Exception as e:
