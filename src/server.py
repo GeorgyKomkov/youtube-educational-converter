@@ -675,6 +675,34 @@ def youtube_proxy():
         logger.error(f"Error in YouTube proxy: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/download/<filename>')
+def download_file(filename):
+    """Скачивание обработанного файла"""
+    try:
+        logger.info(f"Download request for file: {filename}")
+        
+        # Ищем файл в директориях
+        for directory in [TEMP_DIR, OUTPUT_DIR]:
+            # Ищем файл в корне директории
+            file_path = os.path.join(directory, filename)
+            if os.path.exists(file_path):
+                logger.info(f"File found at {file_path}")
+                return send_from_directory(directory, filename, as_attachment=True)
+                
+            # Ищем файл в поддиректориях
+            for root, dirs, files in os.walk(directory):
+                if filename in files:
+                    file_path = os.path.join(root, filename)
+                    logger.info(f"File found at {file_path}")
+                    return send_from_directory(root, filename, as_attachment=True)
+        
+        logger.error(f"File not found: {filename}")
+        return jsonify({'error': 'File not found'}), 404
+        
+    except Exception as e:
+        logger.exception(f"Error downloading file: {e}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == "__main__":
     app.run(
         host=config['server'].get('host', '0.0.0.0'),

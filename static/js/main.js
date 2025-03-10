@@ -86,48 +86,52 @@ async function handleFormSubmit(event) {
     event.preventDefault();
     console.log('Form submitted');
     
-    const videoUrl = document.getElementById('video-url').value;
-    console.log('Video URL:', videoUrl);
+    const form = event.target;
+    const urlInput = form.querySelector('input[name="url"]');
+    const url = urlInput.value.trim();
     
-    if (!videoUrl) {
-        showAlert('Введите URL видео', 'warning');
+    if (!url) {
+        showAlert('Пожалуйста, введите URL видео', 'warning');
         return;
     }
-
+    
+    // Проверяем, что URL является действительным URL YouTube
+    if (!isValidYouTubeUrl(url)) {
+        showAlert('Пожалуйста, введите корректный URL YouTube', 'warning');
+        return;
+    }
+    
+    console.log('Video URL:', url);
+    
     try {
-        showStatus('Начинаем обработку видео...', 'info');
-        console.log('Sending request to process video:', videoUrl);
-        
-        // Добавляем отладочную информацию
-        console.log('Request URL:', '/process_video');
-        console.log('Request method:', 'POST');
-        console.log('Request body:', JSON.stringify({ url: videoUrl }));
-        
+        // Отправляем запрос на обработку видео
+        console.log('Sending request to process video:', url);
         const response = await fetch('/process_video', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ url: videoUrl }),
-            credentials: 'include'
+            body: JSON.stringify({ url })
         });
-
+        
         console.log('Response status:', response.status);
-        console.log('Response headers:', [...response.headers.entries()]);
         
         if (!response.ok) {
             const errorText = await response.text();
             console.error('Error response:', errorText);
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-
+        
         const data = await response.json();
         console.log('Response data:', data);
         
         if (data.task_id) {
+            console.log('Starting status check for task:', data.task_id);
+            showStatus('Видео обрабатывается...', 'info');
             startStatusCheck(data.task_id);
-        } else if (data.error) {
-            showAlert(data.error, 'error');
+        } else {
+            console.error('No task_id in response');
+            showAlert('Ошибка при обработке видео', 'error');
         }
     } catch (error) {
         console.error('Error:', error);
@@ -174,8 +178,25 @@ async function startStatusCheck(taskId) {
                 if (data.result && data.result.pdf_url) {
                     console.log('Opening PDF:', data.result.pdf_url);
                     window.location.href = data.result.pdf_url;
+                } else if (data.result && data.result.video_path) {
+                    console.log('Video path:', data.result.video_path);
+                    // Извлекаем имя файла из пути
+                    const fileName = data.result.video_path.split('/').pop();
+                    // Создаем ссылку для скачивания
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = `/download/${fileName}`;
+                    downloadLink.className = 'btn btn-success mt-3';
+                    downloadLink.textContent = 'Скачать видео';
+                    downloadLink.download = fileName;
+                    
+                    // Добавляем ссылку на страницу
+                    const container = document.querySelector('.container');
+                    container.appendChild(downloadLink);
+                    
+                    showAlert('Видео успешно обработано! Вы можете скачать его.', 'success');
                 } else {
-                    console.log('No PDF URL in result:', data.result);
+                    console.log('No result data:', data.result);
+                    showAlert('Видео обработано, но результат недоступен', 'warning');
                 }
                 break;
             } else if (data.status === 'failed') {
