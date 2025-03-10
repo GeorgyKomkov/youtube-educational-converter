@@ -232,30 +232,51 @@ def index():
     """Главная страница"""
     return render_template('index.html')
 
-@app.route('/process_video', methods=['POST'])
-def process_video():
+@app.route('/convert', methods=['POST'])
+def convert_video():
     """Обработка запроса на конвертацию видео"""
     try:
-        data = request.get_json()
-        if not data or 'url' not in data:
-            logger.error("No URL in request data")
-            return jsonify({'error': 'No URL provided'}), 400
-            
-        url = data.get('url')
-        logger.info(f"Received video processing request for URL: {url}")
+        # Проверяем загрузку системы
+        cpu_usage = psutil.cpu_percent()
+        memory_usage = psutil.virtual_memory().percent
         
-        # Запускаем задачу, передавая куки как параметр
-        task = process_video_task.delay(url=url)
-        logger.info(f"Task created with ID: {task.id}")
+        # Если система перегружена, возвращаем 503
+        if cpu_usage > 80 or memory_usage > 80:
+            return jsonify({
+                'status': 'error',
+                'message': 'Server is currently overloaded. Please try again later.'
+            }), 503
+        
+        # Получаем URL видео
+        url = request.form.get('url')
+        if not url:
+            return jsonify({
+                'status': 'error',
+                'message': 'URL is required'
+            }), 400
+            
+        # Проверяем, что URL валидный
+        if not url.startswith(('http://', 'https://')):
+            return jsonify({
+                'status': 'error',
+                'message': 'Invalid URL format'
+            }), 400
+            
+        # Запускаем задачу в фоне
+        task = process_video_task.delay(url)
         
         return jsonify({
+            'status': 'processing',
             'task_id': task.id,
-            'status': 'processing'
+            'message': 'Video processing started'
         })
-            
+        
     except Exception as e:
         logger.exception(f"Error processing request: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
 
 @app.route('/status/<task_id>')
 def get_task_status(task_id):
@@ -723,6 +744,36 @@ def download_file(filename):
     except Exception as e:
         logger.exception(f"Error downloading file: {e}")
         return jsonify({'error': str(e)}), 500
+
+# Добавляем проверку зависимостей при запуске
+@app.before_first_request
+def check_dependencies():
+    """Проверка и установка необходимых зависимостей"""
+    try:
+        # Проверяем наличие FFmpeg
+        try:
+            subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+            logger.info("FFmpeg is installed")
+        except (subprocess.SubprocessError, FileNotFoundError):
+            logger.warning("FFmpeg not found, attempting to install")
+            subprocess.run(['apt-get', 'update'], check=True)
+            subprocess.run(['apt-get', 'install', '-y', 'ffmpeg'], check=True)
+            
+        # Проверяем наличие yt-dlp
+        try:
+            subprocess.run(['yt-dlp', '--version'], capture_output=True, check=True)
+            logger.info("yt-dlp is installed")
+        except (subprocess.SubprocessError, FileNotFoundError):
+            logger.warning("yt-dlp not found, attempting to install")
+            subprocess.run(['apt-get', 'install', '-y', 'yt-dlp'], check=True)
+            
+        # Создаем необходимые директории
+        for directory in ['/app/logs', '/app/temp', '/app/output', '/app/videos', '/app/cache']:
+            os.makedirs(directory, exist_ok=True)
+            logger.info(f"Created directory: {directory}")
+            
+    except Exception as e:
+        logger.error(f"Failed to check or install dependencies: {e}")
 
 if __name__ == "__main__":
     app.run(

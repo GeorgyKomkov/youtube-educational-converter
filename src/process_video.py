@@ -1,86 +1,33 @@
-import yaml
 import os
 import sys
 import logging
-from pathlib import Path
+import yaml
+import uuid
+import re
+import cv2
 import torch
+import subprocess
+import urllib.parse
+import yt_dlp
+import gc
+import resource
+import shutil
+from pathlib import Path
 from os import statvfs
-from .audio_extractor import AudioExtractor
-from .frame_processor import FrameProcessor
-from .output_generator import OutputGenerator
 import whisper
 from whisper import load_model
 import logging.config
-import shutil
-import cv2
-import resource
-import gc
-import yt_dlp  # Добавим импорт
-import uuid
+
+# Импортируем наши модули
+from .audio_extractor import AudioExtractor
+from .frame_processor import FrameProcessor
+from .output_generator import OutputGenerator
 from .youtube_api import YouTubeAPI
-import json
-import subprocess
-import re
-import urllib.parse
 
 # Настройка логирования
-def setup_logging():
-    try:
-        with open('config/logging.yaml', 'r') as f:
-            config = yaml.safe_load(f)
-        logging.config.dictConfig(config)
-    except Exception as e:
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        logging.error(f"Error setting up logging: {e}")
-
-# Инициализация логгера
-setup_logging()
 logger = logging.getLogger(__name__)
 
-def load_config():
-    """Загрузка конфигурации из YAML файла"""
-    try:
-        config_path = os.path.join('config', 'config.yaml')
-        if not os.path.exists(config_path):
-            raise FileNotFoundError(f"Config file not found: {config_path}")
-            
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-            
-        # Проверка обязательных параметров
-        required = ['temp_dir', 'output_dir', 'transcription', 'video_processing']
-        for param in required:
-            if param not in config:
-                raise ValueError(f"Missing required parameter: {param}")
-                
-        return config
-    except Exception as e:
-        logger.error(f"Error loading config: {e}")
-        return {
-            'temp_dir': 'temp',
-            'output_dir': 'output',
-            'transcription': {'model': 'base', 'use_gpu': False},
-            'video_processing': {'max_frames': 20}
-        }
-
-# Загрузка конфигурации
-config = load_config()
-
-def check_disk_space(path, required_mb=1000):
-    """Проверка свободного места на диске"""
-    try:
-        stats = statvfs(path)
-        free_mb = (stats.f_bavail * stats.f_frsize) / (1024 * 1024)
-        if free_mb < required_mb:
-            raise RuntimeError(f"Insufficient disk space. Required: {required_mb}MB, Available: {free_mb:.2f}MB")
-        return True
-    except Exception as e:
-        logger.error(f"Error checking disk space: {e}")
-        raise
-
+# Кэш для моделей Whisper
 class WhisperModelCache:
     _models = {}
     
@@ -101,17 +48,7 @@ class WhisperModelCache:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-def cleanup_temp(temp_dir):
-    """Очистка временных файлов"""
-    try:
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
-            os.makedirs(temp_dir)
-            logger.info(f"Temporary directory cleaned: {temp_dir}")
-    except Exception as e:
-        logger.error(f"Error cleaning temp directory: {e}")
-        raise
-
+# Основной класс для обработки видео
 class VideoProcessor:
     def __init__(self, config=None):
         """
@@ -339,7 +276,7 @@ class VideoProcessor:
             return None
             
     def _download_video(self, url):
-        """Загрузка видео с YouTube"""
+        """Загрузка видео с YouTube с ограничением качества"""
         try:
             self.logger.info(f"Downloading video from URL: {url}")
             
@@ -347,14 +284,14 @@ class VideoProcessor:
             temp_dir = os.path.join(self.temp_dir, str(uuid.uuid4()))
             os.makedirs(temp_dir, exist_ok=True)
             
-            # Настройки для yt-dlp
+            # Настройки для yt-dlp с сильным ограничением качества для экономии ресурсов
             ydl_opts = {
-                'format': 'best[height<=720]',  # Ограничиваем качество
+                'format': 'worst[height<=360]',  # Используем самое низкое качество
                 'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
                 'noplaylist': True,
                 'quiet': True,
                 'no_warnings': True,
-                'ignoreerrors': True,  # Игнорировать ошибки
+                'ignoreerrors': True,
             }
             
             # Загружаем видео
@@ -363,117 +300,23 @@ class VideoProcessor:
                     info = ydl.extract_info(url, download=True)
                     if not info:
                         self.logger.warning(f"Could not extract video info from URL: {url}")
-                        return self._download_video_alternative(url)
-                        
+                        return None
+                    
                     video_path = os.path.join(temp_dir, f"{info['title']}.{info['ext']}")
                     
                     # Проверяем, что файл существует и не пустой
                     if not os.path.exists(video_path) or os.path.getsize(video_path) == 0:
                         self.logger.warning(f"Downloaded video file not found or empty: {video_path}")
-                        return self._download_video_alternative(url)
-                        
-                    # Проверяем, что файл можно открыть с помощью OpenCV
-                    cap = cv2.VideoCapture(video_path)
-                    if not cap.isOpened():
-                        self.logger.warning(f"Downloaded video cannot be opened: {video_path}")
-                        cap.release()
-                        return self._download_video_alternative(url)
-                    cap.release()
+                        return None
                     
                     self.logger.info(f"Video downloaded successfully: {video_path}")
                     return video_path
             except Exception as e:
                 self.logger.error(f"Error downloading video with yt-dlp: {e}")
-                return self._download_video_alternative(url)
+                return None
                 
         except Exception as e:
             self.logger.error(f"Error downloading video: {e}")
-            # Пробуем альтернативный метод загрузки
-            return self._download_video_alternative(url)
-            
-    def _download_video_alternative(self, url):
-        """Альтернативный метод загрузки видео"""
-        try:
-            self.logger.info(f"Trying alternative download method for URL: {url}")
-            
-            # Создаем временную директорию
-            temp_dir = os.path.join(self.temp_dir, str(uuid.uuid4()))
-            os.makedirs(temp_dir, exist_ok=True)
-            
-            # Имя выходного файла
-            output_path = os.path.join(temp_dir, f"video_{uuid.uuid4()}.mp4")
-            
-            # Пробуем использовать youtube-dl напрямую
-            try:
-                self.logger.info("Trying youtube-dl for download")
-                command = [
-                    'youtube-dl',
-                    '--format', 'best[ext=mp4]/best',
-                    '--output', output_path,
-                    '--no-playlist',
-                    '--no-warnings',
-                    '--no-check-certificate',
-                    '--prefer-insecure',
-                    url
-                ]
-                
-                process = subprocess.run(command, capture_output=True, text=True)
-                
-                if process.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                    self.logger.info(f"Video downloaded successfully with youtube-dl: {output_path}")
-                    return output_path
-                else:
-                    self.logger.error(f"youtube-dl download failed: {process.stderr}")
-            except Exception as e:
-                self.logger.error(f"Error using youtube-dl: {e}")
-            
-            # Пробуем использовать curl
-            try:
-                self.logger.info("Trying curl for direct download")
-                # Проверяем, что URL указывает на файл напрямую
-                if url.endswith('.mp4') or url.endswith('.avi') or url.endswith('.mov'):
-                    command = [
-                        'curl',
-                        '-L',
-                        '-o', output_path,
-                        url
-                    ]
-                    
-                    process = subprocess.run(command, capture_output=True, text=True)
-                    
-                    if process.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                        self.logger.info(f"Video downloaded successfully with curl: {output_path}")
-                        return output_path
-                    else:
-                        self.logger.error(f"curl download failed: {process.stderr}")
-            except Exception as e:
-                self.logger.error(f"Error using curl: {e}")
-            
-            # Пробуем использовать wget
-            try:
-                self.logger.info("Trying wget for direct download")
-                command = [
-                    'wget',
-                    '-O', output_path,
-                    url
-                ]
-                
-                process = subprocess.run(command, capture_output=True, text=True)
-                
-                if process.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                    self.logger.info(f"Video downloaded successfully with wget: {output_path}")
-                    return output_path
-                else:
-                    self.logger.error(f"wget download failed: {process.stderr}")
-            except Exception as e:
-                self.logger.error(f"Error using wget: {e}")
-            
-            # Если все методы не сработали, создаем пустое видео
-            self.logger.warning("All download methods failed, creating empty video file")
-            return self._create_empty_video(temp_dir)
-            
-        except Exception as e:
-            self.logger.error(f"Alternative download failed: {e}")
             return None
             
     def _create_empty_video(self, temp_dir):
@@ -569,53 +412,3 @@ class VideoProcessor:
             shutil.rmtree(temp_dir, ignore_errors=True)
         except Exception as e:
             self.logger.error(f"Error cleaning up temporary files: {e}")
-
-def extract_audio(video_path, config):
-    """Извлечение аудио из видео"""
-    try:
-        audio_extractor = AudioExtractor(config['temp_dir'])
-        return audio_extractor.extract(video_path)
-    except Exception as e:
-        logger.error(f"Error extracting audio: {e}")
-        return None
-
-def transcribe_audio(audio_path, config):
-    """Транскрибация аудио"""
-    try:
-        model_name = config['transcription']['model']
-        use_gpu = config['transcription'].get('use_gpu', False)
-        device = "cuda" if use_gpu and torch.cuda.is_available() else "cpu"
-        
-        model = WhisperModelCache.get_model(model_name, device)
-        result = model.transcribe(audio_path)
-        
-        return result['segments']
-    except Exception as e:
-        logger.error(f"Error transcribing audio: {e}")
-        return None
-
-def extract_frames(video_path, config):
-    """Извлечение и обработка кадров"""
-    try:
-        frame_processor = FrameProcessor(
-            config['output_dir'],
-            max_frames=config['video_processing']['max_frames']
-        )
-        return frame_processor.process(video_path)
-    except Exception as e:
-        logger.error(f"Error extracting frames: {e}")
-        return None
-
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        logger.error("Usage: python process_video.py <video_path>")
-        sys.exit(1)
-    
-    try:
-        video_path = sys.argv[1]
-        processor = VideoProcessor(config)  # Используем класс напрямую
-        result = processor.process_video(video_path)
-        logger.info(f"Processing completed successfully! Result: {result}")
-    except Exception as e:
-        logger.error(f"Processing failed: {e}")
-        sys.exit(1)
