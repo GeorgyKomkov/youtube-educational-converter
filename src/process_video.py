@@ -20,6 +20,8 @@ import uuid
 from .youtube_api import YouTubeAPI
 import json
 import subprocess
+import re
+import urllib.parse
 
 # Настройка логирования
 def setup_logging():
@@ -390,24 +392,39 @@ class VideoProcessor:
             self.logger.error(f"Error generating PDF: {e}")
             raise
 
-    def _extract_video_id(self, url):
-        """Извлечение ID видео из URL"""
+    def extract_video_id(self, url):
+        """Извлечение ID видео из URL YouTube"""
         try:
-            import re
+            self.logger.info(f"Extracting video ID from URL: {url}")
+            
+            # Паттерны для различных форматов URL YouTube
             patterns = [
-                r'(?:v=|\/)([0-9A-Za-z_-]{11}).*',
-                r'youtu\.be\/([0-9A-Za-z_-]{11})',
-                r'youtube\.com\/embed\/([0-9A-Za-z_-]{11})'
+                r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/|youtube\.com\/user\/\S+\/\S+\/|youtube\.com\/user\/\S+\/|youtube\.com\/\S+\/\S+\/|youtube\.com\/\S+\/|youtube\.com\/attribution_link\?a=\S+&u=\/watch\?v=|youtube\.com\/attribution_link\?a=\S+&u=)([^\"&?\/\s]{11})',
+                r'(?:youtube\.com\/shorts\/)([^\"&?\/\s]{11})',
+                r'(?:youtube\.com\/live\/)([^\"&?\/\s]{11})'
             ]
             
+            # Проверяем каждый паттерн
             for pattern in patterns:
                 match = re.search(pattern, url)
                 if match:
-                    return match.group(1)
-            return None
+                    video_id = match.group(1)
+                    self.logger.info(f"Extracted video ID: {video_id}")
+                    return video_id
             
+            # Если не удалось извлечь ID по паттернам, пробуем через urllib.parse
+            parsed_url = urllib.parse.urlparse(url)
+            if parsed_url.netloc in ['youtube.com', 'www.youtube.com']:
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                if 'v' in query_params:
+                    video_id = query_params['v'][0]
+                    self.logger.info(f"Extracted video ID: {video_id}")
+                    return video_id
+            
+            self.logger.error(f"Could not extract video ID from URL: {url}")
+            return None
         except Exception as e:
-            self.logger.error(f"Failed to extract video ID: {e}")
+            self.logger.error(f"Error extracting video ID: {e}")
             return None
 
 def extract_audio(video_path, config):

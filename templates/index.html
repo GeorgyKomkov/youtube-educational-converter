@@ -17,7 +17,7 @@
             <div class="form-group">
                 <input type="text" id="video-url" name="url" class="form-control" placeholder="Введите URL видео с YouTube">
             </div>
-            <button type="submit" class="btn btn-primary">Конвертировать</button>
+            <button type="submit" class="btn btn-primary" id="convert-button">Конвертировать</button>
         </form>
 
         <!-- Статус конвертации -->
@@ -54,28 +54,5 @@
 
     <!-- Скрипты -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-    
-    <!-- Обработка ошибок -->
-    <script>
-        window.onerror = function(msg, url, lineNo, columnNo, error) {
-            console.error('Error:', msg, '\nURL:', url, '\nLine:', lineNo);
-            showAlert('Произошла ошибка при загрузке страницы. Пожалуйста, обновите страницу.', 'error');
-            return false;
-        };
-
-        // Предотвращение множественных отправок
-        let isProcessing = false;
-        const convertBtn = document.querySelector('button[onclick="convertVideo()"]');
-        
-        function convertVideo() {
-            if (isProcessing) {
-                showAlert('Подождите, идет обработка...', 'warning');
-                return;
-            }
-            isProcessing = true;
-            convertBtn.disabled = true;
-            // ... остальной код конвертации ...
-        }
-    </script>
 </body>
 </html> 
