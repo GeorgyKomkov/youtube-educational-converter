@@ -134,38 +134,41 @@ class YouTubeAPI:
     def download_video(self, url, output_path):
         """Загрузка видео с использованием yt-dlp"""
         try:
-            # Проверяем видео через API
-            video_id = self._extract_video_id(url)
-            if not video_id:
-                raise ValueError("Invalid YouTube URL")
-
-            # Получаем путь к файлу с куками в формате Netscape
-            netscape_cookie_file = '/app/config/youtube_netscape.cookies'
-            self.logger.info(f"Using Netscape cookies from: {netscape_cookie_file}")
+            # Создаем директорию для выходного файла
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            # Настройки для yt-dlp с использованием файла куки
+            # Настройки для yt-dlp с улучшенными параметрами для обхода ограничений
             ydl_opts = {
                 'format': 'best',
                 'outtmpl': output_path,
+                'noplaylist': True,
                 'quiet': False,
                 'no_warnings': False,
-                'ignoreerrors': True,
-                'skip_download': False,
-                'noplaylist': True,
-                'nocheckcertificate': True,
-                'no_color': True,
+                'ignoreerrors': False,
                 'verbose': True,
-                'cookiefile': netscape_cookie_file if os.path.exists(netscape_cookie_file) else None,
-                'http_headers': {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                }
+                # Дополнительные параметры для обхода ограничений
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android'],
+                        'player_skip': ['webpage', 'js'],
+                        'compat_opts': ['no-youtube-unavailable-videos']
+                    }
+                },
+                # Имитация браузера
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             }
             
-            # Скачиваем видео
+            # Добавляем куки если они есть
+            if self.cookies:
+                cookie_file = Path('/app/config/youtube_netscape.cookies')
+                if cookie_file.exists():
+                    ydl_opts['cookiefile'] = str(cookie_file)
+                    self.logger.info(f"Using cookie file: {cookie_file}")
+            
             self.logger.info(f"Starting download of {url} with yt-dlp")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
-
+            
             # Проверяем, что файл скачался
             if os.path.exists(output_path):
                 self.logger.info(f"Video downloaded successfully: {output_path}")

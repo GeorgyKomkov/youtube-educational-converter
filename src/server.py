@@ -536,6 +536,31 @@ CORS(app, resources={
     }
 })
 
+@app.route('/set-cookies', methods=['POST'])
+def set_cookies():
+    """API для установки куков YouTube"""
+    try:
+        data = request.json
+        if not data or 'cookies' not in data:
+            return jsonify({'error': 'Cookies are required'}), 400
+            
+        cookies = data['cookies']
+        
+        # Сохраняем куки в файл
+        cookie_file = '/app/config/youtube.cookies'
+        with open(cookie_file, 'w') as f:
+            json.dump(cookies, f)
+            
+        # Инициализируем YouTube API и устанавливаем куки
+        youtube_api = YouTubeAPI()
+        youtube_api.set_session_cookies(cookies)
+        
+        return jsonify({'status': 'success', 'message': f'Saved {len(cookies)} cookies'})
+        
+    except Exception as e:
+        logger.error(f"Error setting cookies: {e}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == "__main__":
     app.run(
         host=config['server'].get('host', '0.0.0.0'),
