@@ -1,13 +1,15 @@
-// Проверка и показ модального окна при загрузке
-document.addEventListener('DOMContentLoaded', async function() {
-    // Базовая проверка куки для пользовательского соглашения
-    if (!localStorage.getItem('cookiesAccepted')) {
-        showCookieModal();
+// Единая функция для инициализации при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    // Проверяем, было ли уже получено согласие
+    if (localStorage.getItem('cookieConsent') === 'true') {
+        // Если согласие уже получено, сразу пытаемся получить куки
+        fetchYouTubeCookies();
+    } else {
+        // Показываем модальное окно согласия
+        showCookieConsent();
     }
     
-    // Сначала пробуем сохранить куки YouTube
-    await saveCookies();
-    
+    // Инициализация формы
     const form = document.getElementById('video-form');
     if (form) {
         form.addEventListener('submit', handleFormSubmit);
@@ -16,113 +18,82 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 });
 
-function showCookieModal() {
-    document.getElementById('cookie-modal').style.display = 'block';
+// Функция для показа модального окна согласия на использование куков
+function showCookieConsent() {
+    // Создаем модальное окно
+    const modal = document.createElement('div');
+    modal.className = 'cookie-modal';
+    modal.innerHTML = `
+        <div class="cookie-modal-content">
+            <h3>Использование куков YouTube</h3>
+            <p>Для скачивания и обработки видео с YouTube нам необходимо использовать куки вашего браузера.</p>
+            <p>Это позволит нам скачивать видео, которые требуют авторизации или имеют ограничения.</p>
+            <p>Мы используем куки только для скачивания видео и не храним их для других целей.</p>
+            <div class="cookie-modal-buttons">
+                <button id="cookie-consent-yes">Согласен</button>
+                <button id="cookie-consent-no">Не согласен</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Обработчики для кнопок
+    document.getElementById('cookie-consent-yes').addEventListener('click', function() {
+        localStorage.setItem('cookieConsent', 'true');
+        modal.remove();
+        fetchYouTubeCookies();
+    });
+    
+    document.getElementById('cookie-consent-no').addEventListener('click', function() {
+        localStorage.setItem('cookieConsent', 'false');
+        modal.remove();
+        showAlert('Без доступа к кукам некоторые видео могут быть недоступны для скачивания.', 'warning');
+    });
 }
 
-async function acceptCookies() {
-    try {
-        localStorage.setItem('cookiesAccepted', 'true');
-        document.getElementById('cookie-modal').style.display = 'none';
-        
-        // Запускаем фоновый процесс работы с куки
-        await handleYouTubeCookies();
-    } catch (error) {
-        console.error('Error handling cookies:', error);
-    }
-}
-
-function rejectCookies() {
-    document.getElementById('cookie-modal').style.display = 'none';
-    showAlert('Без доступа к cookies некоторые функции сайта могут быть недоступны', 'warning');
-}
-
-async function handleYouTubeCookies() {
-    try {
-        // Проверяем авторизацию перед попыткой получить куки
-        const authResponse = await fetch('/api/check-auth');
-        const authData = await authResponse.json();
-        
-        if (!authData.authorized) {
-            // Просто показываем сообщение без добавления кнопки
-            showAlert('Требуется авторизация на YouTube', 'warning');
-            return false;
+// Функция для получения куков через прокси
+function fetchYouTubeCookies() {
+    console.log('Getting YouTube cookies through proxy...');
+    
+    // Сначала загружаем YouTube через прокси
+    fetch('/youtube-proxy?url=https://www.youtube.com/', {
+        method: 'GET',
+        credentials: 'include' // Включаем куки в запрос
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
-
-        // Получаем куки только если авторизованы
-        const cookies = await getYoutubeCookies();
-        if (!cookies || cookies.length === 0) {
-            showAlert('Не удалось получить куки YouTube', 'error');
-            return false;
-        }
-
-        // Сохраняем куки на сервере
-        const response = await fetch('/api/save-cookies', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ cookies }),
+        
+        // Теперь запрашиваем сохранение куков
+        return fetch('/get-youtube-cookies', {
+            method: 'GET',
             credentials: 'include'
         });
-
+    })
+    .then(response => {
         if (!response.ok) {
-            throw new Error('Failed to save cookies');
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
-
-        return true;
-    } catch (error) {
-        console.error('Error handling YouTube cookies:', error);
-        showAlert('Ошибка при работе с куки YouTube', 'error');
-        return false;
-    }
-}
-
-async function checkYouTubeAuth() {
-    try {
-        // Пробуем получить куки YouTube
-        const ytCookies = document.cookie
-            .split(';')
-            .map(cookie => cookie.trim())
-            .filter(cookie => 
-                cookie.startsWith('YT') || 
-                cookie.startsWith('CONSENT') || 
-                cookie.startsWith('VISITOR_INFO1_LIVE') ||
-                cookie.startsWith('LOGIN_INFO')
-            );
-
-        // Если есть хотя бы базовые куки
-        if (ytCookies.length > 0) {
-            // Сразу сохраняем их
-            await handleYouTubeCookies();
-            return true;
+        return response.json();
+    })
+    .then(data => {
+        if (data.status === 'success') {
+            console.log('Cookies fetched successfully:', data.message);
+            showAlert('Куки YouTube успешно получены', 'success');
+        } else {
+            console.error('Failed to fetch cookies:', data.error);
+            showAlert('Не удалось получить куки YouTube. Некоторые видео могут быть недоступны.', 'warning');
         }
-        
-        return false;
-    } catch (error) {
-        console.error('Error checking YouTube auth:', error);
-        return false;
-    }
+    })
+    .catch(error => {
+        console.error('Error fetching cookies:', error);
+        showAlert('Ошибка при получении куков YouTube', 'error');
+    });
 }
 
-function addYouTubeAuthButton() {
-    const container = document.querySelector('.container');
-    const authButton = document.createElement('a');
-    authButton.href = 'https://www.youtube.com';
-    authButton.target = '_blank';
-    authButton.className = 'btn btn-primary';
-    authButton.textContent = 'Войти на YouTube';
-    authButton.style.marginBottom = '20px';
-    
-    // Добавляем кнопку после предупреждения
-    const alert = container.querySelector('.alert');
-    if (alert) {
-        alert.after(authButton);
-    } else {
-        container.prepend(authButton);
-    }
-}
-
+// Обработка отправки формы
 async function handleFormSubmit(event) {
     event.preventDefault();
     
@@ -133,12 +104,6 @@ async function handleFormSubmit(event) {
     }
 
     try {
-        // Проверяем и обновляем куки перед отправкой
-        const cookiesValid = await handleYouTubeCookies();
-        if (!cookiesValid) {
-            return;
-        }
-
         showStatus('Начинаем обработку видео...', 'info');
         
         const response = await fetch('/process_video', {
@@ -167,6 +132,7 @@ async function handleFormSubmit(event) {
     }
 }
 
+// Проверка статуса задачи
 async function startStatusCheck(taskId) {
     const progressBar = document.querySelector('.progress-bar');
     const progressContainer = document.getElementById('progress-bar');
@@ -187,8 +153,8 @@ async function startStatusCheck(taskId) {
                 showStatus('Обработка завершена!', 'success');
                 
                 // Если есть ссылка на PDF, показываем её
-                if (data.pdf_url) {
-                    window.location.href = data.pdf_url;
+                if (data.result && data.result.pdf_url) {
+                    window.location.href = data.result.pdf_url;
                 }
                 break;
             } else if (data.status === 'failed') {
@@ -208,6 +174,7 @@ async function startStatusCheck(taskId) {
     }
 }
 
+// Показ уведомлений
 function showAlert(message, type) {
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert alert-${type}`;
@@ -226,6 +193,7 @@ function showAlert(message, type) {
     }, 5000);
 }
 
+// Показ статуса
 function showStatus(message, type = 'info') {
     const statusDiv = document.getElementById('status');
     if (!statusDiv) return;
@@ -235,198 +203,10 @@ function showStatus(message, type = 'info') {
     statusDiv.style.display = 'block';
 }
 
-// Функция для получения куков YouTube
-async function getYoutubeCookies() {
-    try {
-        console.log('Getting YouTube cookies from browser...');
-        
-        // Отправляем запрос на сервер для получения куков
-        const response = await fetch('/api/get-youtube-cookies', {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to get cookies');
-        }
-        
-        const data = await response.json();
-        console.log('Server response data:', data);
-        
-        if (data.cookies && data.cookies.length > 0) {
-            console.log('Cookies received:', data.cookies);
-            return data.cookies;
-        } else {
-            throw new Error('No cookies received from server');
-        }
-    } catch (error) {
-        console.error('Error getting YouTube cookies:', error);
-        return null;
-    }
-}
-
-async function saveCookies() {
-    try {
-        console.log('Starting saveCookies...');
-        const cookies = await getYoutubeCookies();
-        
-        if (!cookies) {
-            console.error('No cookies returned from getYoutubeCookies');
-            return false;
-        }
-        
-        console.log('Cookies received:', cookies);
-        return true;
-    } catch (error) {
-        console.error('Error in saveCookies:', error);
-        return false;
-    }
-}
-
-// При загрузке страницы
-document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Page loaded, checking cookies...');
-    await saveCookies();
-});
-
-// Добавляем автоматическое обновление кук каждые 5 минут
-setInterval(async () => {
-    try {
-        await saveCookies();
-    } catch (error) {
-        console.error('Error in cookie refresh:', error);
-    }
-}, 5 * 60 * 1000);
-
-// Функция для показа модального окна согласия на использование куков
-function showCookieConsent() {
-    // Проверяем, было ли уже получено согласие
+// Добавляем автоматическое обновление кук каждые 30 минут
+setInterval(() => {
     if (localStorage.getItem('cookieConsent') === 'true') {
-        // Если согласие уже получено, сразу пытаемся получить куки
-        getYouTubeCookies();
-        return;
+        fetchYouTubeCookies();
     }
-    
-    // Создаем модальное окно
-    const modal = document.createElement('div');
-    modal.className = 'cookie-modal';
-    modal.innerHTML = `
-        <div class="cookie-modal-content">
-            <h3>Использование куков YouTube</h3>
-            <p>Для скачивания и обработки видео с YouTube нам необходимо использовать куки вашего браузера.</p>
-            <p>Это позволит нам скачивать видео, которые требуют авторизации или имеют ограничения.</p>
-            <p>Мы используем куки только для скачивания видео и не храним их для других целей.</p>
-            <div class="cookie-modal-buttons">
-                <button id="cookie-consent-yes">Согласен</button>
-                <button id="cookie-consent-no">Не согласен</button>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    
-    // Обработчики для кнопок
-    document.getElementById('cookie-consent-yes').addEventListener('click', function() {
-        localStorage.setItem('cookieConsent', 'true');
-        modal.remove();
-        getYouTubeCookies();
-    });
-    
-    document.getElementById('cookie-consent-no').addEventListener('click', function() {
-        localStorage.setItem('cookieConsent', 'false');
-        modal.remove();
-        alert('Без доступа к кукам некоторые видео могут быть недоступны для скачивания.');
-    });
-}
-
-// Функция для автоматического получения куков YouTube
-function getYouTubeCookies() {
-    // Проверяем, есть ли согласие пользователя
-    if (localStorage.getItem('cookieConsent') !== 'true') {
-        return;
-    }
-    
-    // Пытаемся получить куки через document.cookie
-    // Это сработает только для куков с атрибутом SameSite=None и Secure
-    // Для большинства куков YouTube это не сработает из-за ограничений безопасности
-    
-    // Создаем iframe для загрузки YouTube
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = 'https://www.youtube.com/';
-    
-    document.body.appendChild(iframe);
-    
-    // Ждем загрузку iframe
-    iframe.onload = function() {
-        // Пытаемся получить куки через JavaScript API
-        try {
-            // Используем сообщения между окнами для получения куков
-            iframe.contentWindow.postMessage({type: 'GET_COOKIES'}, 'https://www.youtube.com');
-        } catch (e) {
-            console.error('Cannot access cookies:', e);
-            // Если не удалось получить куки, используем альтернативный метод
-            fetchYouTubeCookies();
-        }
-    };
-    
-    // Обработчик сообщений от iframe
-    window.addEventListener('message', function(event) {
-        if (event.origin === 'https://www.youtube.com' && event.data.type === 'COOKIES') {
-            sendCookiesToServer(event.data.cookies);
-            iframe.remove();
-        }
-    });
-}
-
-// Функция для получения куков через серверный запрос
-function fetchYouTubeCookies() {
-    // Отправляем запрос на сервер для получения куков YouTube
-    fetch('/get-youtube-cookies', {
-        method: 'GET',
-        credentials: 'include' // Включаем куки в запрос
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            console.log('Cookies fetched successfully');
-        } else {
-            console.error('Failed to fetch cookies:', data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error fetching cookies:', error);
-    });
-}
-
-// Отправка куков на сервер
-function sendCookiesToServer(cookies) {
-    fetch('/set-cookies', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ cookies: cookies })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            console.log('Cookies saved successfully');
-        } else {
-            console.error('Error saving cookies:', data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error sending cookies:', error);
-    });
-}
-
-// Вызываем функцию при загрузке страницы
-document.addEventListener('DOMContentLoaded', function() {
-    // Показываем модальное окно согласия при загрузке страницы
-    showCookieConsent();
-});
+}, 30 * 60 * 1000);
 

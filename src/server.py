@@ -154,10 +154,12 @@ def process_video_task(self, url):
     try:
         logger.info(f"Starting video processing task for URL: {url}")
         
-        # Проверяем наличие куки
-        cookie_file = os.path.join('config', 'youtube.cookies')
-        if not os.path.exists(cookie_file):
-            raise ValueError("YouTube authorization required")
+        # Проверяем наличие куки, но не выбрасываем ошибку, если их нет
+        cookie_file = '/app/config/youtube.cookies'
+        if os.path.exists(cookie_file):
+            logger.info("YouTube cookies found, using them for download")
+        else:
+            logger.warning("No YouTube cookies found, download may be limited")
             
         # Инициализация VideoProcessor
         processor = VideoProcessor(config)
@@ -323,6 +325,7 @@ def save_cookies():
             raise FileNotFoundError("Cookie file was not created")
 
         # Передаем куки в YouTubeAPI
+        youtube_api = YouTubeAPI()
         youtube_api.set_session_cookies(cookies)
         logger.info("Cookies passed to YouTubeAPI")
 
@@ -445,22 +448,38 @@ def check_auth():
 def get_youtube_cookies():
     """Получение куков YouTube через серверный запрос"""
     try:
-        # Создаем сессию с имитацией браузера
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-        })
+        # Получаем куки из запроса пользователя
+        youtube_cookies = {}
+        for cookie in request.cookies:
+            if cookie.startswith('YT') or cookie in ['CONSENT', 'VISITOR_INFO1_LIVE', 'LOGIN_INFO', 'SID', 'HSID', 'SSID', 'APISID', 'SAPISID']:
+                youtube_cookies[cookie] = request.cookies.get(cookie)
         
-        # Делаем запрос к YouTube
-        response = session.get('https://www.youtube.com/')
+        # Преобразуем в формат для сохранения
+        cookies = []
+        for name, value in youtube_cookies.items():
+            cookie = {
+                'name': name,
+                'value': value,
+                'domain': '.youtube.com',
+                'path': '/'
+            }
+            cookies.append(cookie)
         
-        # Получаем куки из ответа
-        cookies = [
-            {'name': name, 'value': value, 'domain': '.youtube.com', 'path': '/'}
-            for name, value in session.cookies.items()
+        # Добавляем дополнительные куки, которые могут помочь обойти ограничения
+        additional_cookies = [
+            {'name': 'CONSENT', 'value': 'YES+', 'domain': '.youtube.com', 'path': '/'},
+            {'name': 'VISITOR_INFO1_LIVE', 'value': 'y-NbKGnXEZw', 'domain': '.youtube.com', 'path': '/'},
+            {'name': 'GPS', 'value': '1', 'domain': '.youtube.com', 'path': '/'},
+            {'name': 'YSC', 'value': 'DwKYMZ-9Ky4', 'domain': '.youtube.com', 'path': '/'}
         ]
+        
+        # Добавляем дополнительные куки, если их еще нет
+        for additional_cookie in additional_cookies:
+            if not any(c['name'] == additional_cookie['name'] for c in cookies):
+                cookies.append(additional_cookie)
+        
+        # Убедимся, что директория существует
+        os.makedirs('/app/config', exist_ok=True)
         
         # Сохраняем куки в файл
         if cookies:
@@ -471,22 +490,68 @@ def get_youtube_cookies():
             youtube_api = YouTubeAPI()
             youtube_api.set_session_cookies(cookies)
             
+            logger.info(f"Saved {len(cookies)} YouTube cookies")
             return jsonify({'status': 'success', 'message': f'Saved {len(cookies)} cookies'})
         else:
-            return jsonify({'status': 'error', 'error': 'No cookies received'})
-        
+            # Если куки не получены, делаем запрос к YouTube от имени сервера
+            session = requests.Session()
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Referer': 'https://www.google.com/'
+            })
+            
+            # Делаем запрос к YouTube
+            response = session.get('https://www.youtube.com/')
+            
+            # Получаем куки из ответа
+            server_cookies = []
+            for name, value in session.cookies.items():
+                cookie = {
+                    'name': name,
+                    'value': value,
+                    'domain': '.youtube.com',
+                    'path': '/'
+                }
+                server_cookies.append(cookie)
+            
+            # Добавляем дополнительные куки
+            for additional_cookie in additional_cookies:
+                if not any(c['name'] == additional_cookie['name'] for c in server_cookies):
+                    server_cookies.append(additional_cookie)
+            
+            # Сохраняем куки в файл
+            if server_cookies:
+                with open('/app/config/youtube.cookies', 'w') as f:
+                    json.dump(server_cookies, f)
+                
+                # Инициализируем YouTube API и устанавливаем куки
+                youtube_api = YouTubeAPI()
+                youtube_api.set_session_cookies(server_cookies)
+                
+                logger.info(f"Saved {len(server_cookies)} server YouTube cookies")
+                return jsonify({'status': 'success', 'message': f'Saved {len(server_cookies)} cookies'})
+            else:
+                logger.warning("No YouTube cookies received")
+                return jsonify({'status': 'error', 'error': 'No cookies received'})
     except Exception as e:
         logger.error(f"Error getting YouTube cookies: {e}")
         return jsonify({'status': 'error', 'error': str(e)})
 
-def check_youtube_auth(cookies):
+def check_youtube_auth(cookies_list):
     """Проверка валидности куков YouTube"""
     try:
         session = requests.Session()
         
-        # Добавляем куки в сессию
-        for name, value in cookies.items():
-            session.cookies.set(name, value, domain='.youtube.com')
+        # Преобразуем список куков в словарь для сессии
+        for cookie in cookies_list:
+            session.cookies.set(
+                cookie['name'], 
+                cookie['value'], 
+                domain=cookie.get('domain', '.youtube.com'),
+                path=cookie.get('path', '/')
+            )
             
         # Пробуем получить данные профиля
         response = session.get('https://www.youtube.com/feed/subscriptions')
@@ -498,31 +563,13 @@ def check_youtube_auth(cookies):
         logger.error(f"Error checking YouTube auth: {e}")
         return False
 
-# Правильная настройка CORS для всех API endpoints
-CORS(app, resources={
-    r"/api/*": {
-        "origins": [
-            "http://localhost:8080",          # для разработки
-            "http://localhost:5000",          # для разработки
-            "http://127.0.0.1:8080",         # для разработки
-            "https://your-production-domain.com"  # для продакшена
-        ],
-        "supports_credentials": True,         # Важно! Разрешаем передачу куков
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": [
-            "Content-Type", 
-            "Authorization",
-            "Access-Control-Allow-Credentials",
-            "Access-Control-Allow-Origin"
-        ],
-        "expose_headers": [
-            "Content-Range", 
-            "X-Content-Range"
-        ],
-        "credentials": True,                  # Важно! Разрешаем аутентификацию
-        "max_age": 3600                      # Кэширование preflight запросов
-    }
-})
+# Правильная настройка CORS для всего приложения
+CORS(app, supports_credentials=True, origins=[
+    "http://localhost:8080",
+    "http://localhost:5000",
+    "http://127.0.0.1:8080",
+    "https://your-production-domain.com"
+], methods=["GET", "POST", "OPTIONS"])
 
 @app.route('/set-cookies', methods=['POST'])
 def set_cookies():
@@ -547,6 +594,56 @@ def set_cookies():
         
     except Exception as e:
         logger.error(f"Error setting cookies: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/youtube-proxy', methods=['GET'])
+def youtube_proxy():
+    """Прокси для запросов к YouTube"""
+    try:
+        url = request.args.get('url', 'https://www.youtube.com/')
+        
+        # Создаем сессию с куками пользователя
+        session = requests.Session()
+        
+        # Копируем заголовки из запроса пользователя
+        headers = {}
+        for header in request.headers:
+            if header[0].lower() not in ['host', 'connection', 'content-length']:
+                headers[header[0]] = header[1]
+        
+        # Копируем куки из запроса пользователя
+        for cookie in request.cookies:
+            session.cookies.set(cookie, request.cookies.get(cookie))
+        
+        # Делаем запрос к YouTube
+        response = session.get(url, headers=headers)
+        
+        # Получаем куки из ответа и сохраняем их
+        cookies = []
+        for name, value in session.cookies.items():
+            cookie = {
+                'name': name,
+                'value': value,
+                'domain': '.youtube.com',
+                'path': '/'
+            }
+            cookies.append(cookie)
+        
+        # Сохраняем куки в файл
+        if cookies:
+            with open('/app/config/youtube.cookies', 'w') as f:
+                json.dump(cookies, f)
+            
+            # Инициализируем YouTube API и устанавливаем куки
+            youtube_api = YouTubeAPI()
+            youtube_api.set_session_cookies(cookies)
+            
+            logger.info(f"Saved {len(cookies)} YouTube cookies via proxy")
+        
+        # Возвращаем ответ от YouTube
+        return response.content, response.status_code, response.headers.items()
+    except Exception as e:
+        logger.error(f"Error in YouTube proxy: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":
