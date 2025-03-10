@@ -301,57 +301,104 @@ setInterval(async () => {
     }
 }, 5 * 60 * 1000);
 
-// Функция для получения куков YouTube
+// Функция для показа модального окна согласия на использование куков
+function showCookieConsent() {
+    // Проверяем, было ли уже получено согласие
+    if (localStorage.getItem('cookieConsent') === 'true') {
+        // Если согласие уже получено, сразу пытаемся получить куки
+        getYouTubeCookies();
+        return;
+    }
+    
+    // Создаем модальное окно
+    const modal = document.createElement('div');
+    modal.className = 'cookie-modal';
+    modal.innerHTML = `
+        <div class="cookie-modal-content">
+            <h3>Использование куков YouTube</h3>
+            <p>Для скачивания и обработки видео с YouTube нам необходимо использовать куки вашего браузера.</p>
+            <p>Это позволит нам скачивать видео, которые требуют авторизации или имеют ограничения.</p>
+            <p>Мы используем куки только для скачивания видео и не храним их для других целей.</p>
+            <div class="cookie-modal-buttons">
+                <button id="cookie-consent-yes">Согласен</button>
+                <button id="cookie-consent-no">Не согласен</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Обработчики для кнопок
+    document.getElementById('cookie-consent-yes').addEventListener('click', function() {
+        localStorage.setItem('cookieConsent', 'true');
+        modal.remove();
+        getYouTubeCookies();
+    });
+    
+    document.getElementById('cookie-consent-no').addEventListener('click', function() {
+        localStorage.setItem('cookieConsent', 'false');
+        modal.remove();
+        alert('Без доступа к кукам некоторые видео могут быть недоступны для скачивания.');
+    });
+}
+
+// Функция для автоматического получения куков YouTube
 function getYouTubeCookies() {
-    // Создаем iframe, который загрузит YouTube
+    // Проверяем, есть ли согласие пользователя
+    if (localStorage.getItem('cookieConsent') !== 'true') {
+        return;
+    }
+    
+    // Пытаемся получить куки через document.cookie
+    // Это сработает только для куков с атрибутом SameSite=None и Secure
+    // Для большинства куков YouTube это не сработает из-за ограничений безопасности
+    
+    // Создаем iframe для загрузки YouTube
     const iframe = document.createElement('iframe');
     iframe.style.display = 'none';
     iframe.src = 'https://www.youtube.com/';
     
     document.body.appendChild(iframe);
     
-    // Ждем загрузки iframe
+    // Ждем загрузку iframe
     iframe.onload = function() {
-        // Пытаемся получить куки через JavaScript
+        // Пытаемся получить куки через JavaScript API
         try {
-            // Это не сработает из-за Same-Origin Policy, но мы можем показать инструкцию
-            showCookieInstructions();
+            // Используем сообщения между окнами для получения куков
+            iframe.contentWindow.postMessage({type: 'GET_COOKIES'}, 'https://www.youtube.com');
         } catch (e) {
             console.error('Cannot access cookies:', e);
-            showCookieInstructions();
+            // Если не удалось получить куки, используем альтернативный метод
+            fetchYouTubeCookies();
         }
     };
+    
+    // Обработчик сообщений от iframe
+    window.addEventListener('message', function(event) {
+        if (event.origin === 'https://www.youtube.com' && event.data.type === 'COOKIES') {
+            sendCookiesToServer(event.data.cookies);
+            iframe.remove();
+        }
+    });
 }
 
-// Показываем инструкцию для ручного получения куков
-function showCookieInstructions() {
-    const instructionsDiv = document.createElement('div');
-    instructionsDiv.className = 'cookie-instructions';
-    instructionsDiv.innerHTML = `
-        <h3>Для работы с защищенными видео нужны куки YouTube</h3>
-        <p>Чтобы предоставить куки YouTube:</p>
-        <ol>
-            <li>Установите расширение <a href="https://chrome.google.com/webstore/detail/editthiscookie/fngmhnnpilhplaeedifhccceomclgfbg" target="_blank">EditThisCookie</a> для Chrome</li>
-            <li>Перейдите на <a href="https://www.youtube.com" target="_blank">YouTube</a> и войдите в аккаунт</li>
-            <li>Нажмите на иконку расширения EditThisCookie</li>
-            <li>Нажмите кнопку "Export" (экспорт)</li>
-            <li>Скопируйте куки и вставьте их в поле ниже</li>
-        </ol>
-        <textarea id="cookies-input" placeholder="Вставьте куки здесь"></textarea>
-        <button id="save-cookies">Сохранить куки</button>
-    `;
-    
-    document.body.appendChild(instructionsDiv);
-    
-    // Добавляем обработчик для кнопки сохранения куков
-    document.getElementById('save-cookies').addEventListener('click', function() {
-        const cookiesText = document.getElementById('cookies-input').value;
-        try {
-            const cookies = JSON.parse(cookiesText);
-            sendCookiesToServer(cookies);
-        } catch (e) {
-            alert('Неверный формат куков. Пожалуйста, убедитесь, что вы скопировали JSON-формат.');
+// Функция для получения куков через серверный запрос
+function fetchYouTubeCookies() {
+    // Отправляем запрос на сервер для получения куков YouTube
+    fetch('/get-youtube-cookies', {
+        method: 'GET',
+        credentials: 'include' // Включаем куки в запрос
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            console.log('Cookies fetched successfully');
+        } else {
+            console.error('Failed to fetch cookies:', data.error);
         }
+    })
+    .catch(error => {
+        console.error('Error fetching cookies:', error);
     });
 }
 
@@ -367,35 +414,19 @@ function sendCookiesToServer(cookies) {
     .then(response => response.json())
     .then(data => {
         if (data.status === 'success') {
-            alert('Куки успешно сохранены! Теперь вы можете скачивать защищенные видео.');
-            document.querySelector('.cookie-instructions').style.display = 'none';
+            console.log('Cookies saved successfully');
         } else {
-            alert('Ошибка: ' + data.error);
+            console.error('Error saving cookies:', data.error);
         }
     })
     .catch(error => {
-        alert('Ошибка при отправке куков: ' + error);
+        console.error('Error sending cookies:', error);
     });
-}
-
-// Добавляем кнопку для получения куков на страницу
-function addCookieButton() {
-    const cookieButton = document.createElement('button');
-    cookieButton.textContent = 'Предоставить куки YouTube';
-    cookieButton.className = 'cookie-button';
-    cookieButton.addEventListener('click', getYouTubeCookies);
-    
-    // Добавляем кнопку на страницу
-    const formElement = document.querySelector('form');
-    if (formElement) {
-        formElement.parentNode.insertBefore(cookieButton, formElement.nextSibling);
-    } else {
-        document.body.appendChild(cookieButton);
-    }
 }
 
 // Вызываем функцию при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
-    addCookieButton();
+    // Показываем модальное окно согласия при загрузке страницы
+    showCookieConsent();
 });
 
