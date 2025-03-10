@@ -245,20 +245,23 @@ class VideoProcessor:
         """Обработка видео"""
         try:
             # Создаем временную директорию для файлов
-            temp_dir = os.path.join('/app/temp', str(uuid.uuid4()))
+            temp_dir = os.path.join(self.temp_dir, str(uuid.uuid4()))
             os.makedirs(temp_dir, exist_ok=True)
             
-            # Извлекаем ID видео
-            video_id = self._extract_video_id(url)
-            if not video_id:
-                raise ValueError(f"Could not extract video ID from URL: {url}")
+            # Извлекаем ID видео (если это YouTube URL)
+            video_id = self._extract_video_id(url) if 'youtube.com' in url or 'youtu.be' in url else None
             
-            # Получаем информацию о видео
-            video_info = self.youtube_api.get_video_info(video_id)
-            if not video_info:
-                raise ValueError(f"Could not get video info for ID: {video_id}")
+            # Получаем заголовок видео
+            if video_id and hasattr(self, 'youtube_api'):
+                try:
+                    video_info = self.youtube_api.get_video_info(video_id)
+                    video_title = video_info.get('title', f"Video_{video_id}")
+                except Exception as e:
+                    self.logger.warning(f"Could not get video info: {e}")
+                    video_title = f"Video_{video_id if video_id else uuid.uuid4()}"
+            else:
+                video_title = f"Video_{uuid.uuid4()}"
             
-            video_title = video_info.get('title', f"Video_{video_id}")
             self.logger.info(f"Processing video: {video_title}")
             
             # Загружаем видео
@@ -393,20 +396,23 @@ class VideoProcessor:
             self.logger.error(f"Error generating PDF: {e}")
             raise
 
-    def extract_video_id(self, url):
-        """Извлечение ID видео из URL YouTube"""
+    def _extract_video_id(self, url):
+        """Извлечение ID видео из URL"""
         try:
             self.logger.info(f"Extracting video ID from URL: {url}")
             
-            # Паттерны для различных форматов URL YouTube
-            patterns = [
-                r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/|youtube\.com\/user\/\S+\/\S+\/|youtube\.com\/user\/\S+\/|youtube\.com\/\S+\/\S+\/|youtube\.com\/\S+\/|youtube\.com\/attribution_link\?a=\S+&u=\/watch\?v=)([^\"&?\/\s]{11})',
-                r'(?:youtube\.com\/shorts\/)([^\"&?\/\s]{11})',
-                r'(?:youtube\.com\/live\/)([^\"&?\/\s]{11})'
+            # Проверяем, является ли URL полным URL YouTube
+            youtube_patterns = [
+                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([^&\s]+)',
+                r'(?:https?:\/\/)?(?:www\.)?youtu\.be\/([^\?\s]+)',
+                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([^\?\s]+)',
+                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/v\/([^\?\s]+)',
+                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/user\/[^\/]+\/\?v=([^\&\s]+)',
+                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([^\?\s]+)'
             ]
             
             # Проверяем каждый паттерн
-            for pattern in patterns:
+            for pattern in youtube_patterns:
                 match = re.search(pattern, url)
                 if match:
                     video_id = match.group(1)
@@ -421,6 +427,11 @@ class VideoProcessor:
                     video_id = query_params['v'][0]
                     self.logger.info(f"Extracted video ID: {video_id}")
                     return video_id
+            
+            # Если URL не содержит ID, возможно это и есть ID
+            if re.match(r'^[a-zA-Z0-9_-]{11}$', url):
+                self.logger.info(f"URL appears to be a video ID: {url}")
+                return url
             
             self.logger.error(f"Could not extract video ID from URL: {url}")
             return None
