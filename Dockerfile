@@ -3,13 +3,12 @@ FROM python:3.9-slim
 
 # Установка системных зависимостей
 RUN apt-get update && apt-get install -y \
-    curl \
-    git \
-    ffmpeg \
-    wkhtmltopdf \
-    ghostscript \
     python3-pip \
     python3-dev \
+    ffmpeg \
+    curl \
+    wkhtmltopdf \
+    ghostscript \
     && rm -rf /var/lib/apt/lists/*
 
 # Обновление pip
@@ -27,8 +26,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Устанавливаем youtube-dl и yt-dlp
-RUN pip3 install --no-cache-dir youtube-dl
-RUN pip3 install --no-cache-dir yt-dlp
+RUN pip3 install --no-cache-dir youtube-dl yt-dlp
 
 # Копирование остальных файлов
 COPY . .

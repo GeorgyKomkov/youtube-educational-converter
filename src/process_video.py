@@ -299,12 +299,34 @@ class VideoProcessor:
             if not os.path.exists(video_path):
                 raise FileNotFoundError(f"Video file not found at {video_path}")
             
-            # Дальнейшая обработка видео...
-            # Здесь должен быть ваш код для обработки видео
+            # Извлекаем аудио из видео
+            self.logger.info("Extracting audio from video")
+            audio_path = self._extract_audio(video_path)
+            
+            # Транскрибируем аудио
+            self.logger.info("Transcribing audio")
+            segments = model.transcribe(audio_path)
+            
+            # Извлекаем кадры из видео
+            self.logger.info("Extracting frames from video")
+            frames = self._extract_frames(video_path)
+            
+            # Получаем информацию о видео
+            video_info = youtube_api.get_video_info(video_id)
+            video_title = video_info['snippet']['title']
+            
+            # Генерируем PDF
+            self.logger.info("Generating PDF")
+            output_generator = OutputGenerator(output_dir)
+            pdf_path = output_generator.generate_output(segments['text'], frames, video_title)
+            
+            # Очищаем временные файлы
+            self._cleanup_temp_files([audio_path])
             
             return {
                 'status': 'success',
                 'video_path': video_path,
+                'pdf_path': str(pdf_path),
                 'message': 'Video processed successfully'
             }
             

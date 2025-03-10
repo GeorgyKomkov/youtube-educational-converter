@@ -162,6 +162,19 @@ def process_video_task(self, url):
         else:
             logger.warning("No YouTube cookies found, download may be limited")
             
+        # Проверяем наличие youtube-dl и yt-dlp
+        try:
+            subprocess.run(['yt-dlp', '--version'], capture_output=True, check=True)
+            logger.info("yt-dlp is available")
+        except (subprocess.SubprocessError, FileNotFoundError):
+            logger.error("yt-dlp is not available!")
+            
+        try:
+            subprocess.run(['youtube-dl', '--version'], capture_output=True, check=True)
+            logger.info("youtube-dl is available")
+        except (subprocess.SubprocessError, FileNotFoundError):
+            logger.error("youtube-dl is not available!")
+            
         # Инициализация VideoProcessor
         processor = VideoProcessor(config)
         
