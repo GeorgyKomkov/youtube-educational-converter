@@ -25,6 +25,7 @@ import socket
 from celery.result import AsyncResult
 from flask_cors import CORS
 import requests
+import subprocess
 
 # Импортируем нужные модули
 from .youtube_api import YouTubeAPI
@@ -481,6 +482,10 @@ def get_youtube_cookies():
             {'name': 'VISITOR_INFO1_LIVE', 'value': 'y9-h6iLPDEY', 'domain': '.youtube.com', 'path': '/'},
             {'name': 'YSC', 'value': 'DwKYMZ-9Ky4', 'domain': '.youtube.com', 'path': '/'},
             {'name': 'PREF', 'value': 'f4=4000000&tz=Europe%2FMoscow', 'domain': '.youtube.com', 'path': '/'},
+            {'name': 'GPS', 'value': '1', 'domain': '.youtube.com', 'path': '/'},
+            {'name': 'SIDCC', 'value': 'ACA-OxPm6CjH5mxlwGnUQeUo9ZLgE7RYIiZV8LtVnqR3qdWzs5U', 'domain': '.youtube.com', 'path': '/'},
+            {'name': '__Secure-1PSIDCC', 'value': 'ACA-OxOxDLmYDz9mHUZQeUo9ZLgE7RYIiZV8LtVnqR3qdWzs5U', 'domain': '.youtube.com', 'path': '/'},
+            {'name': '__Secure-3PSIDCC', 'value': 'ACA-OxPCLmYDz9mHUZQeUo9ZLgE7RYIiZV8LtVnqR3qdWzs5U', 'domain': '.youtube.com', 'path': '/'},
         ]
         
         # Добавляем дополнительные куки, если их еще нет
@@ -513,9 +518,22 @@ def get_youtube_cookies():
         
         logger.info("Cookies saved in both JSON and Netscape formats")
         
-        # Инициализируем YouTube API и устанавливаем куки
-        youtube_api = YouTubeAPI()
-        youtube_api.set_session_cookies(cookies)
+        # Пробуем создать файл куков с помощью yt-dlp
+        try:
+            logger.info("Trying to create cookies file with yt-dlp")
+            cmd = [
+                'yt-dlp',
+                '--cookies-from-browser', 'chrome',
+                '--cookies', '/app/config/youtube_browser.cookies'
+            ]
+            
+            process = subprocess.run(cmd, capture_output=True, text=True)
+            if process.returncode == 0:
+                logger.info("Successfully created cookies file from browser")
+            else:
+                logger.warning(f"Failed to create cookies file from browser: {process.stderr}")
+        except Exception as e:
+            logger.warning(f"Error creating cookies file from browser: {e}")
         
         return jsonify({
             'status': 'success',

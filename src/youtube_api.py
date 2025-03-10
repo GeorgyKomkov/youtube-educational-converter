@@ -137,15 +137,11 @@ class YouTubeAPI:
         try:
             self.logger.info(f"Downloading video from URL: {url}")
             
-            # Проверяем наличие куков
-            cookie_file = '/app/config/youtube.cookies'
-            netscape_cookie_file = '/app/config/youtube_netscape.cookies'
-            
-            if not os.path.exists(cookie_file) and not os.path.exists(netscape_cookie_file):
-                self.logger.warning("No cookies found, download may be limited")
-            
             # Создаем директорию для выходного файла, если она не существует
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
+            # Пробуем скачать с помощью yt-dlp напрямую
+            self.logger.info("Trying to download directly with yt-dlp")
             
             # Базовые опции yt-dlp
             ydl_opts = {
@@ -154,108 +150,94 @@ class YouTubeAPI:
                 'noplaylist': True,
                 'verbose': True,
                 'geo_bypass': True,
+                'cookiefile': '/app/config/youtube_netscape.cookies',
                 'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
                 'referer': 'https://www.youtube.com/',
                 'http_headers': {
                     'Accept-Language': 'en-US,en;q=0.9',
-                    'Origin': 'https://www.youtube.com',
-                    'Sec-Fetch-Dest': 'empty',
-                    'Sec-Fetch-Mode': 'cors',
-                    'Sec-Fetch-Site': 'same-origin',
                 },
                 'extractor_args': {
                     'youtube': {
                         'player_client': ['android', 'web', 'tv', 'ios'],
-                        'skip': ['hls', 'dash', 'translated_subs']
                     }
                 }
             }
             
-            # Добавляем куки, если они есть
-            if os.path.exists(netscape_cookie_file):
-                self.logger.info(f"Using Netscape cookies from {netscape_cookie_file}")
-                ydl_opts['cookiefile'] = netscape_cookie_file
-            elif os.path.exists(cookie_file):
-                self.logger.info(f"Using JSON cookies from {cookie_file}")
-                with open(cookie_file, 'r') as f:
-                    cookies = json.load(f)
-                    ydl_opts['cookiesfrombrowser'] = ('chrome', None, None, None, cookies)
-            
-            # Пробуем скачать видео
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                self.logger.info(f"Starting download with options: {ydl_opts}")
-                ydl.download([url])
-            
-            # Проверяем, что файл был скачан
-            if not os.path.exists(output_path):
-                raise FileNotFoundError(f"Video file not found at {output_path}")
-            
-            self.logger.info(f"Video downloaded successfully to {output_path}")
-            return output_path
-        except Exception as e:
-            self.logger.error(f"Failed to download video: {e}")
-            
-            # Пробуем альтернативный метод скачивания
             try:
-                self.logger.info("Trying alternative download method...")
-                return self.download_video_alternative(url, output_path)
-            except Exception as alt_e:
-                self.logger.error(f"Alternative download failed: {alt_e}")
-                raise Exception(f"{e}. Alternative method also failed: {alt_e}")
-
-    def download_video_alternative(self, url, output_path):
-        """Альтернативный метод скачивания видео через subprocess"""
-        try:
-            self.logger.info(f"Using alternative download method for URL: {url}")
-            
-            # Проверяем наличие куков в формате Netscape
-            netscape_cookie_file = '/app/config/youtube_netscape.cookies'
-            if not os.path.exists(netscape_cookie_file):
-                self.logger.warning(f"Netscape cookie file not found at {netscape_cookie_file}")
-            
-            # Формируем команду yt-dlp
-            cmd = [
-                'yt-dlp',
-                '--format', 'best[ext=mp4]/best',
-                '--output', output_path,
-                '--no-playlist',
-                '--verbose',
-                '--geo-bypass',
-            ]
-            
-            # Добавляем куки, если они есть
-            if os.path.exists(netscape_cookie_file):
-                cmd.extend(['--cookies', netscape_cookie_file])
-            
-            # Добавляем дополнительные опции
-            cmd.extend([
-                '--user-agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36',
-                '--referer', 'https://www.youtube.com/',
-                '--add-header', 'Accept-Language:en-US,en;q=0.9',
-                '--extractor-args', 'youtube:player_client=android,web,tv,ios'
-            ])
-            
-            # Добавляем URL
-            cmd.append(url)
-            
-            self.logger.info(f"Running command: {' '.join(cmd)}")
-            
-            # Запускаем процесс
-            process = subprocess.run(cmd, capture_output=True, text=True)
-            
-            # Проверяем результат
-            if process.returncode != 0:
-                self.logger.error(f"yt-dlp failed with code {process.returncode}: {process.stderr}")
-                raise Exception(f"yt-dlp failed with code {process.returncode}: {process.stderr}")
-            
-            # Проверяем, что файл был скачан
-            if not os.path.exists(output_path):
-                raise FileNotFoundError(f"Video file not found at {output_path}")
-            
-            self.logger.info(f"Video downloaded successfully to {output_path} using alternative method")
-            return output_path
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+                    
+                # Проверяем, что файл был скачан
+                if not os.path.exists(output_path):
+                    raise FileNotFoundError(f"Video file not found at {output_path}")
+                    
+                self.logger.info(f"Video downloaded successfully to {output_path}")
+                return output_path
+            except Exception as e:
+                self.logger.error(f"yt-dlp error: {e}")
+                self.logger.info("Trying alternative download method")
+                
+                # Альтернативный метод с использованием --cookies-from-browser
+                self.logger.info(f"Trying alternative download method for {url}")
+                
+                # Создаем команду для yt-dlp
+                cmd = [
+                    'yt-dlp',
+                    '--format', 'best[ext=mp4]/best',
+                    '--output', output_path,
+                    '--no-playlist',
+                    '--verbose',
+                    '--geo-bypass',
+                    '--cookies-from-browser', 'chrome',  # Используем куки из Chrome
+                    '--user-agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36',
+                    '--referer', 'https://www.youtube.com/',
+                    '--add-header', 'Accept-Language:en-US,en;q=0.9',
+                    '--extractor-args', 'youtube:player_client=android,web,tv,ios'
+                ]
+                
+                # Добавляем URL
+                cmd.append(url)
+                
+                self.logger.info(f"Running command: {' '.join(cmd)}")
+                
+                # Запускаем процесс
+                process = subprocess.run(cmd, capture_output=True, text=True)
+                
+                # Проверяем результат
+                if process.returncode != 0:
+                    self.logger.error(f"Alternative download failed: {process.stderr}")
+                    
+                    # Пробуем еще один метод - с использованием youtube-dl
+                    self.logger.info(f"Trying youtube-dl as a last resort for {url}")
+                    cmd = [
+                        'youtube-dl',
+                        '--format', 'best[ext=mp4]/best',
+                        '--output', output_path,
+                        '--no-playlist',
+                        '--verbose',
+                        '--geo-bypass',
+                        '--cookies', '/app/config/youtube_netscape.cookies',
+                        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+                        '--referer', 'https://www.youtube.com/',
+                        '--add-header', 'Accept-Language:en-US,en;q=0.9',
+                        url
+                    ]
+                    
+                    self.logger.info(f"Running command: {' '.join(cmd)}")
+                    process = subprocess.run(cmd, capture_output=True, text=True)
+                    
+                    if process.returncode != 0:
+                        self.logger.error(f"youtube-dl also failed: {process.stderr}")
+                        raise Exception(f"Failed to download video: {process.stderr}")
+                
+                # Проверяем, что файл был скачан
+                if not os.path.exists(output_path):
+                    raise FileNotFoundError(f"Video file not found at {output_path}")
+                
+                self.logger.info(f"Video downloaded successfully to {output_path} using alternative method")
+                return output_path
         except Exception as e:
-            self.logger.error(f"Alternative download method failed: {e}")
+            self.logger.error(f"Error downloading video: {e}")
             raise
 
     def _extract_video_id(self, url):

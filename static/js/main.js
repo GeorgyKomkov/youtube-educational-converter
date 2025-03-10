@@ -137,41 +137,64 @@ async function handleFormSubmit(event) {
 
 // Проверка статуса задачи
 async function startStatusCheck(taskId) {
+    console.log('Starting status check for task:', taskId);
+    
     const progressBar = document.querySelector('.progress-bar');
     const progressContainer = document.getElementById('progress-bar');
     
     try {
+        console.log('Showing progress bar');
         progressContainer.style.display = 'block';
         
         while (true) {
+            console.log('Checking status for task:', taskId);
             const response = await fetch(`/status/${taskId}`);
+            console.log('Status response:', response.status);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Error checking status:', errorText);
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
             const data = await response.json();
+            console.log('Status data:', data);
             
             if (data.status === 'processing') {
                 const progress = data.progress || 0;
+                console.log('Task is processing, progress:', progress);
                 progressBar.style.width = `${progress}%`;
                 showStatus(`Обработка видео: ${progress}%`, 'info');
             } else if (data.status === 'completed') {
+                console.log('Task completed successfully');
                 progressBar.style.width = '100%';
                 showStatus('Обработка завершена!', 'success');
                 
                 // Если есть ссылка на PDF, показываем её
                 if (data.result && data.result.pdf_url) {
+                    console.log('Opening PDF:', data.result.pdf_url);
                     window.location.href = data.result.pdf_url;
+                } else {
+                    console.log('No PDF URL in result:', data.result);
                 }
                 break;
             } else if (data.status === 'failed') {
+                console.error('Task failed:', data.error);
                 showStatus(`Ошибка: ${data.error || 'Неизвестная ошибка'}`, 'error');
                 break;
+            } else {
+                console.log('Unknown task status:', data.status);
             }
             
+            console.log('Waiting 2 seconds before next check');
             await new Promise(resolve => setTimeout(resolve, 2000));
         }
     } catch (error) {
         console.error('Error checking status:', error);
-        showStatus('Ошибка при проверке статуса', 'error');
+        showStatus('Ошибка при проверке статуса: ' + error.message, 'error');
     } finally {
         setTimeout(() => {
+            console.log('Hiding progress bar');
             progressContainer.style.display = 'none';
         }, 3000);
     }
