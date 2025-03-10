@@ -82,29 +82,24 @@ def check_disk_space(path, required_mb=1000):
         raise
 
 class WhisperModelCache:
-    _instance = None
-    _model = None
+    _models = {}
     
     @classmethod
     def get_model(cls, model_name, device):
-        if cls._model is None:
-            try:
-                cls._model = load_model(model_name, device=device)
-            except Exception as e:
-                logger.error(f"Error loading Whisper model: {e}")
-                raise
-        return cls._model
-
+        """Получение модели Whisper из кэша или загрузка новой"""
+        key = f"{model_name}_{device}"
+        if key not in cls._models:
+            logger.info(f"Loading Whisper model: {model_name} on {device}")
+            cls._models[key] = whisper.load_model(model_name, device=device)
+        return cls._models[key]
+    
     @classmethod
-    def cleanup(cls):
-        if cls._model is not None:
-            try:
-                del cls._model
-                cls._model = None
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-            except Exception as e:
-                logger.error(f"Error cleaning up Whisper model: {e}")
+    def clear_cache(cls):
+        """Очистка кэша моделей"""
+        cls._models.clear()
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
 def cleanup_temp(temp_dir):
     """Очистка временных файлов"""
@@ -118,92 +113,285 @@ def cleanup_temp(temp_dir):
         raise
 
 class VideoProcessor:
-    def __init__(self, config):
-        """Инициализация процессора видео"""
-        self.config = config
-        self.temp_dir = config.get('temp_dir', '/app/temp')
-        self.output_dir = config.get('output_dir', '/app/output')
+    def __init__(self, config=None):
+        """
+        Инициализация процессора видео
+        
+        Args:
+            config (dict, optional): Конфигурация. Если None, загружается из файла.
+        """
         self.logger = logging.getLogger(__name__)
         
-        # Создаем директории, если они не существуют
+        # Загружаем конфигурацию, если не передана
+        if config is None:
+            self.config = self._load_config()
+        else:
+            self.config = config
+            
+        # Инициализируем пути
+        self.temp_dir = self.config.get('temp_dir', '/tmp/video_processor')
+        self.output_dir = self.config.get('output_dir', '/tmp/video_output')
+        
+        # Создаем директории
         os.makedirs(self.temp_dir, exist_ok=True)
         os.makedirs(self.output_dir, exist_ok=True)
         
-        # Инициализируем экстрактор аудио
+        # Инициализируем компоненты
+        self.youtube_api = YouTubeAPI()
         self.audio_extractor = AudioExtractor(self.temp_dir)
-        
-        # Инициализируем генератор выходных данных
+        self.frame_processor = FrameProcessor(self.output_dir)
         self.output_generator = OutputGenerator(self.output_dir)
         
-        # Проверяем наличие необходимых инструментов
+        # Проверяем зависимости
         self._check_dependencies()
         
-        # Инициализируем YouTube API
-        self.youtube_api = YouTubeAPI()
-    
-    def _check_dependencies(self):
-        """Проверка наличия необходимых инструментов"""
+    def _load_config(self):
+        """Загрузка конфигурации из YAML файла"""
         try:
-            # Проверяем ffmpeg
-            subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
-            self.logger.info("ffmpeg is available")
-            
-            # Проверяем yt-dlp
-            try:
-                subprocess.run(['yt-dlp', '--version'], capture_output=True, check=True)
-                self.logger.info("yt-dlp is available")
-            except (subprocess.SubprocessError, FileNotFoundError):
-                self.logger.warning("yt-dlp is not available")
-            
-            # Проверяем youtube-dl
-            try:
-                subprocess.run(['youtube-dl', '--version'], capture_output=True, check=True)
-                self.logger.info("youtube-dl is available")
-            except (subprocess.SubprocessError, FileNotFoundError):
-                self.logger.warning("youtube-dl is not available")
+            config_path = os.path.join('config', 'config.yaml')
+            if not os.path.exists(config_path):
+                raise FileNotFoundError(f"Config file not found: {config_path}")
                 
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+                
+            # Проверка обязательных параметров
+            required = ['temp_dir', 'output_dir']
+            missing = [param for param in required if param not in config]
+            if missing:
+                raise ValueError(f"Missing required parameters: {', '.join(missing)}")
+                
+            return config
         except Exception as e:
-            self.logger.error(f"Error checking dependencies: {e}")
-            raise
-
-    def download_video(self, video_url):
-        """Download video from YouTube"""
-        try:
-            # Загружаем cookies из файла
-            cookies_path = Path('config/youtube.cookies')
-            if not cookies_path.exists():
-                logger.warning("YouTube cookies file not found")
-            
-            ydl_opts = {
-                'format': 'best',
-                'outtmpl': str(self.temp_dir / '%(id)s.%(ext)s'),
-                'quiet': True,
-                'no_warnings': True,
-                'cookiefile': str(cookies_path),  # Добавляем путь к файлу с cookies
-                'nocheckcertificate': True,
-                'ignoreerrors': True,
-                'extract_flat': False,
-                'http_headers': {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            self.logger.error(f"Error loading config: {e}")
+            # Возвращаем базовую конфигурацию
+            return {
+                'temp_dir': '/tmp/video_processor',
+                'output_dir': '/tmp/video_output',
+                'transcription': {
+                    'model': 'small',
+                    'use_gpu': True
+                },
+                'video_processing': {
+                    'max_frames': 10
                 }
             }
             
-            logger.info(f"Downloading video from URL: {video_url}")
-            logger.info(f"Using cookies from: {cookies_path}")
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(video_url, download=True)
-                video_path = self.temp_dir / f"{info['id']}.{info['ext']}"
-                logger.info(f"Video downloaded successfully to: {video_path}")
-                return str(video_path)
+    def _check_dependencies(self):
+        """Проверка наличия необходимых зависимостей"""
+        try:
+            # Проверка FFmpeg
+            try:
+                result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True)
+                if result.returncode != 0:
+                    self.logger.warning("FFmpeg not found or not working properly")
+            except Exception:
+                self.logger.warning("FFmpeg check failed")
+                
+            # Проверка yt-dlp
+            try:
+                result = subprocess.run(['yt-dlp', '--version'], capture_output=True, text=True)
+                if result.returncode != 0:
+                    self.logger.warning("yt-dlp not found or not working properly")
+            except Exception:
+                self.logger.warning("yt-dlp check failed")
+                
+            # Проверка доступности GPU
+            if torch.cuda.is_available():
+                self.logger.info(f"GPU available: {torch.cuda.get_device_name(0)}")
+            else:
+                self.logger.info("GPU not available, using CPU")
                 
         except Exception as e:
-            logger.error(f"Error downloading video: {e}")
-            if hasattr(e, 'msg'):
-                logger.error(f"Error message: {e.msg}")
-            raise RuntimeError(f"Failed to download video: {str(e)}")
-
-    def download_video_alternative(self, url):
+            self.logger.error(f"Error checking dependencies: {e}")
+            
+    def process_video(self, url):
+        """
+        Обработка видео
+        
+        Args:
+            url (str): URL видео или путь к локальному файлу
+            
+        Returns:
+            dict: Результат обработки
+        """
+        try:
+            # Создаем временную директорию для файлов
+            temp_dir = os.path.join(self.temp_dir, str(uuid.uuid4()))
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # Определяем, является ли url локальным файлом
+            is_local_file = os.path.exists(url)
+            
+            if is_local_file:
+                video_path = url
+                video_title = os.path.basename(url).split('.')[0]
+            else:
+                # Извлекаем ID видео (если это YouTube URL)
+                video_id = self._extract_video_id(url) if 'youtube.com' in url or 'youtu.be' in url else None
+                
+                # Получаем заголовок видео
+                if video_id:
+                    try:
+                        video_info = self.youtube_api.get_video_info(video_id)
+                        video_title = video_info.get('title', f"Video_{video_id}")
+                    except Exception as e:
+                        self.logger.warning(f"Could not get video info: {e}")
+                        video_title = f"Video_{video_id if video_id else uuid.uuid4()}"
+                else:
+                    video_title = f"Video_{uuid.uuid4()}"
+                    
+                self.logger.info(f"Processing video: {video_title}")
+                
+                # Загружаем видео
+                video_path = self._download_video(url)
+                if not video_path:
+                    # Если не удалось загрузить, создаем пустое видео
+                    self.logger.warning("Failed to download video, creating empty video")
+                    video_path = self._create_empty_video(temp_dir)
+                    if not video_path:
+                        raise ValueError("Failed to create empty video")
+            
+            # Извлекаем аудио
+            audio_path = self._extract_audio(video_path)
+            
+            # Если не удалось извлечь аудио, создаем пустой файл
+            if not audio_path:
+                self.logger.warning("Failed to extract audio, creating empty audio file")
+                audio_path = self.audio_extractor._create_empty_audio()
+                transcription = "Не удалось извлечь аудио из видео."
+            else:
+                # Транскрибируем аудио
+                transcription = self._transcribe_audio(audio_path)
+                
+            # Если не удалось транскрибировать, используем заглушку
+            if not transcription:
+                transcription = "Не удалось распознать речь в видео."
+                
+            # Извлекаем кадры
+            frames = self._extract_frames(video_path)
+            
+            # Если не удалось извлечь кадры, используем заглушку
+            if not frames or len(frames) == 0:
+                self.logger.warning("Failed to extract frames, using placeholder")
+                frames = []
+                
+            # Генерируем выходной файл
+            output_path = self._generate_pdf(transcription, frames, video_title)
+            
+            # Очищаем временные файлы
+            self._cleanup_temp_files(temp_dir)
+            
+            return {
+                'status': 'completed',
+                'output_path': str(output_path),
+                'video_title': video_title
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error processing video: {e}")
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+            
+    def _extract_video_id(self, url):
+        """Извлечение ID видео из URL"""
+        try:
+            self.logger.info(f"Extracting video ID from URL: {url}")
+            
+            # Проверяем, является ли URL полным URL YouTube
+            youtube_patterns = [
+                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([^&\s]+)',
+                r'(?:https?:\/\/)?(?:www\.)?youtu\.be\/([^\?\s]+)',
+                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([^\?\s]+)',
+                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/v\/([^\?\s]+)',
+                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/user\/[^\/]+\/\?v=([^\&\s]+)',
+                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([^\?\s]+)'
+            ]
+            
+            # Проверяем каждый паттерн
+            for pattern in youtube_patterns:
+                match = re.search(pattern, url)
+                if match:
+                    video_id = match.group(1)
+                    self.logger.info(f"Extracted video ID: {video_id}")
+                    return video_id
+            
+            # Если не удалось извлечь ID по паттернам, пробуем через urllib.parse
+            parsed_url = urllib.parse.urlparse(url)
+            if parsed_url.netloc in ['youtube.com', 'www.youtube.com']:
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                if 'v' in query_params:
+                    video_id = query_params['v'][0]
+                    self.logger.info(f"Extracted video ID: {video_id}")
+                    return video_id
+            
+            # Если URL не содержит ID, возможно это и есть ID
+            if re.match(r'^[a-zA-Z0-9_-]{11}$', url):
+                self.logger.info(f"URL appears to be a video ID: {url}")
+                return url
+                
+            self.logger.error(f"Could not extract video ID from URL: {url}")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error extracting video ID: {e}")
+            return None
+            
+    def _download_video(self, url):
+        """Загрузка видео с YouTube"""
+        try:
+            self.logger.info(f"Downloading video from URL: {url}")
+            
+            # Создаем временную директорию
+            temp_dir = os.path.join(self.temp_dir, str(uuid.uuid4()))
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # Настройки для yt-dlp
+            ydl_opts = {
+                'format': 'best[height<=720]',  # Ограничиваем качество
+                'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
+                'noplaylist': True,
+                'quiet': True,
+                'no_warnings': True,
+                'ignoreerrors': True,  # Игнорировать ошибки
+            }
+            
+            # Загружаем видео
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    if not info:
+                        self.logger.warning(f"Could not extract video info from URL: {url}")
+                        return self._download_video_alternative(url)
+                        
+                    video_path = os.path.join(temp_dir, f"{info['title']}.{info['ext']}")
+                    
+                    # Проверяем, что файл существует и не пустой
+                    if not os.path.exists(video_path) or os.path.getsize(video_path) == 0:
+                        self.logger.warning(f"Downloaded video file not found or empty: {video_path}")
+                        return self._download_video_alternative(url)
+                        
+                    # Проверяем, что файл можно открыть с помощью OpenCV
+                    cap = cv2.VideoCapture(video_path)
+                    if not cap.isOpened():
+                        self.logger.warning(f"Downloaded video cannot be opened: {video_path}")
+                        cap.release()
+                        return self._download_video_alternative(url)
+                    cap.release()
+                    
+                    self.logger.info(f"Video downloaded successfully: {video_path}")
+                    return video_path
+            except Exception as e:
+                self.logger.error(f"Error downloading video with yt-dlp: {e}")
+                return self._download_video_alternative(url)
+                
+        except Exception as e:
+            self.logger.error(f"Error downloading video: {e}")
+            # Пробуем альтернативный метод загрузки
+            return self._download_video_alternative(url)
+            
+    def _download_video_alternative(self, url):
         """Альтернативный метод загрузки видео"""
         try:
             self.logger.info(f"Trying alternative download method for URL: {url}")
@@ -287,7 +475,7 @@ class VideoProcessor:
         except Exception as e:
             self.logger.error(f"Alternative download failed: {e}")
             return None
-        
+            
     def _create_empty_video(self, temp_dir):
         """Создание пустого видео файла для продолжения обработки"""
         try:
@@ -311,262 +499,76 @@ class VideoProcessor:
             if process.returncode != 0:
                 self.logger.error(f"Failed to create empty video: {process.stderr}")
                 raise RuntimeError("Could not create empty video file")
-            
+                
             return output_path
         except Exception as e:
             self.logger.error(f"Failed to create empty video: {e}")
             return None
-
-    def process_video(self, url):
-        """Обработка видео"""
-        try:
-            # Создаем временную директорию для файлов
-            temp_dir = os.path.join(self.temp_dir, str(uuid.uuid4()))
-            os.makedirs(temp_dir, exist_ok=True)
             
-            # Извлекаем ID видео (если это YouTube URL)
-            video_id = self._extract_video_id(url) if 'youtube.com' in url or 'youtu.be' in url else None
-            
-            # Получаем заголовок видео
-            if video_id and hasattr(self, 'youtube_api'):
-                try:
-                    video_info = self.youtube_api.get_video_info(video_id)
-                    video_title = video_info.get('title', f"Video_{video_id}")
-                except Exception as e:
-                    self.logger.warning(f"Could not get video info: {e}")
-                    video_title = f"Video_{video_id if video_id else uuid.uuid4()}"
-            else:
-                video_title = f"Video_{uuid.uuid4()}"
-            
-            self.logger.info(f"Processing video: {video_title}")
-            
-            # Загружаем видео
-            video_path = self._download_video(url)
-            if not video_path:
-                raise ValueError(f"Failed to download video from URL: {url}")
-            
-            # Извлекаем аудио
-            audio_path = self._extract_audio(video_path)
-            
-            # Если не удалось извлечь аудио, создаем пустой файл
-            if not audio_path:
-                self.logger.warning("Failed to extract audio, creating empty audio file")
-                audio_extractor = AudioExtractor(self.temp_dir)
-                audio_path = audio_extractor._create_empty_audio()
-                transcription = "Не удалось извлечь аудио из видео."
-            else:
-                # Транскрибируем аудио
-                transcription = self._transcribe_audio(audio_path)
-            
-            # Если не удалось транскрибировать, используем заглушку
-            if not transcription:
-                transcription = "Не удалось распознать речь в видео."
-            
-            # Извлекаем кадры
-            frames = self._extract_frames(video_path)
-            
-            # Если не удалось извлечь кадры, используем заглушку
-            if not frames or len(frames) == 0:
-                self.logger.warning("Failed to extract frames, using placeholder")
-                frames = []
-            
-            # Генерируем выходной файл
-            output_path = self._generate_pdf(transcription, frames, video_title)
-            
-            # Очищаем временные файлы
-            self._cleanup_temp_files(temp_dir)
-            
-            return {
-                'status': 'completed',
-                'output_path': str(output_path),
-                'video_title': video_title
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error processing video: {e}")
-            return {
-                'status': 'error',
-                'error': str(e)
-            }
-
-    def _check_disk_space(self, video_path):
-        try:
-            video_size = os.path.getsize(video_path)
-            required_space = video_size * 3  # 3x размер видео
-            
-            free_space = shutil.disk_usage(self.temp_dir).free
-            if free_space < required_space:
-                raise RuntimeError(
-                    f"Insufficient disk space. Required: {required_space/1024/1024:.1f}MB, "
-                    f"Available: {free_space/1024/1024:.1f}MB"
-                )
-        except Exception as e:
-            logger.error(f"Error checking disk space: {e}")
-            raise
-
-    def _cleanup_temp_files(self, temp_files):
-        """Очистка временных файлов"""
-        for file_path in temp_files:
-            try:
-                if file_path and os.path.exists(file_path):
-                    os.remove(file_path)
-                    self.logger.info(f"Removed temporary file: {file_path}")
-            except Exception as e:
-                self.logger.error(f"Error removing temp file {file_path}: {e}")
-
     def _extract_audio(self, video_path):
-        """Извлечение аудио из видео в низком качестве"""
+        """Извлечение аудио из видео"""
         try:
             self.logger.info(f"Extracting audio from video: {video_path}")
-            
-            # Используем инициализированный экстрактор аудио
-            audio_path = self.audio_extractor.extract(video_path)
-            self.logger.info(f"Audio extracted to: {audio_path}")
-            return audio_path
+            return self.audio_extractor.extract(video_path)
         except Exception as e:
             self.logger.error(f"Error extracting audio: {e}")
-            raise
-
-    def _extract_frames(self, video_path):
-        """Извлечение кадров с оптимизацией"""
+            return None
+            
+    def _transcribe_audio(self, audio_path):
+        """Транскрибация аудио"""
         try:
-            cap = cv2.VideoCapture(video_path)
-            frames = []
+            self.logger.info(f"Transcribing audio: {audio_path}")
             
-            # Получаем параметры из конфигурации с значениями по умолчанию
-            processing_config = self.config.get('processing', {})
-            interval = processing_config.get('frame_interval', 30)
-            width = processing_config.get('image_max_width', 640)
-            quality = processing_config.get('image_quality', 85)
+            model_name = self.config.get('transcription', {}).get('model', 'small')
+            use_gpu = self.config.get('transcription', {}).get('use_gpu', False)
+            device = "cuda" if use_gpu and torch.cuda.is_available() else "cpu"
             
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                    
-                # Уменьшаем размер
-                height = int(frame.shape[0] * width / frame.shape[1])
-                frame = cv2.resize(frame, (width, height))
+            model = WhisperModelCache.get_model(model_name, device)
+            result = model.transcribe(audio_path)
+            
+            # Извлекаем текст из результата
+            if isinstance(result, dict) and 'text' in result:
+                return result['text']
+            elif isinstance(result, dict) and 'segments' in result:
+                return ' '.join([segment.get('text', '') for segment in result['segments']])
+            else:
+                return str(result)
                 
-                # Сохраняем с низким качеством
-                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
-                _, buffer = cv2.imencode('.jpg', frame, encode_param)
-                frames.append(buffer)
-                
-                # Пропускаем кадры согласно интервалу
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 
-                       cap.get(cv2.CAP_PROP_POS_FRAMES) + interval)
+        except Exception as e:
+            self.logger.error(f"Error transcribing audio: {e}")
+            return None
             
-            cap.release()
-            return frames
+    def _extract_frames(self, video_path):
+        """Извлечение и обработка кадров"""
+        try:
+            self.logger.info(f"Extracting frames from video: {video_path}")
+            return self.frame_processor.process(video_path)
         except Exception as e:
             self.logger.error(f"Error extracting frames: {e}")
-            raise
-
+            return []
+            
     def _generate_pdf(self, transcription, frames, video_title):
-        """Генерация PDF с текстом и кадрами"""
+        """Генерация PDF отчета"""
         try:
-            text = transcription
-            return self.output_generator.generate(text, frames)
+            self.logger.info(f"Generating PDF for video: {video_title}")
+            return self.output_generator.generate_output(transcription, frames, video_title)
         except Exception as e:
             self.logger.error(f"Error generating PDF: {e}")
-            raise
-
-    def _extract_video_id(self, url):
-        """Извлечение ID видео из URL"""
+            # Создаем простой текстовый файл как запасной вариант
+            output_path = os.path.join(self.output_dir, f"{video_title}.txt")
+            with open(output_path, 'w') as f:
+                f.write(f"Заголовок: {video_title}\n\n")
+                f.write(f"Транскрипция:\n{transcription}\n\n")
+                f.write(f"Количество кадров: {len(frames)}")
+            return output_path
+            
+    def _cleanup_temp_files(self, temp_dir):
+        """Очистка временных файлов"""
         try:
-            self.logger.info(f"Extracting video ID from URL: {url}")
-            
-            # Проверяем, является ли URL полным URL YouTube
-            youtube_patterns = [
-                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([^&\s]+)',
-                r'(?:https?:\/\/)?(?:www\.)?youtu\.be\/([^\?\s]+)',
-                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([^\?\s]+)',
-                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/v\/([^\?\s]+)',
-                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/user\/[^\/]+\/\?v=([^\&\s]+)',
-                r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([^\?\s]+)'
-            ]
-            
-            # Проверяем каждый паттерн
-            for pattern in youtube_patterns:
-                match = re.search(pattern, url)
-                if match:
-                    video_id = match.group(1)
-                    self.logger.info(f"Extracted video ID: {video_id}")
-                    return video_id
-            
-            # Если не удалось извлечь ID по паттернам, пробуем через urllib.parse
-            parsed_url = urllib.parse.urlparse(url)
-            if parsed_url.netloc in ['youtube.com', 'www.youtube.com']:
-                query_params = urllib.parse.parse_qs(parsed_url.query)
-                if 'v' in query_params:
-                    video_id = query_params['v'][0]
-                    self.logger.info(f"Extracted video ID: {video_id}")
-                    return video_id
-            
-            # Если URL не содержит ID, возможно это и есть ID
-            if re.match(r'^[a-zA-Z0-9_-]{11}$', url):
-                self.logger.info(f"URL appears to be a video ID: {url}")
-                return url
-            
-            self.logger.error(f"Could not extract video ID from URL: {url}")
-            return None
+            self.logger.info(f"Cleaning up temporary files in: {temp_dir}")
+            shutil.rmtree(temp_dir, ignore_errors=True)
         except Exception as e:
-            self.logger.error(f"Error extracting video ID: {e}")
-            return None
-
-    def _download_video(self, url):
-        """Загрузка видео с YouTube"""
-        try:
-            self.logger.info(f"Downloading video from URL: {url}")
-            
-            # Создаем временную директорию
-            temp_dir = os.path.join(self.temp_dir, str(uuid.uuid4()))
-            os.makedirs(temp_dir, exist_ok=True)
-            
-            # Настройки для yt-dlp
-            ydl_opts = {
-                'format': 'best[height<=720]',  # Ограничиваем качество
-                'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
-                'noplaylist': True,
-                'quiet': True,
-                'no_warnings': True,
-                'ignoreerrors': True,  # Игнорировать ошибки
-            }
-            
-            # Загружаем видео
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=True)
-                    if not info:
-                        self.logger.warning(f"Could not extract video info from URL: {url}")
-                        return self._download_video_alternative(url)
-                        
-                    video_path = os.path.join(temp_dir, f"{info['title']}.{info['ext']}")
-                    
-                    # Проверяем, что файл существует и не пустой
-                    if not os.path.exists(video_path) or os.path.getsize(video_path) == 0:
-                        self.logger.warning(f"Downloaded video file not found or empty: {video_path}")
-                        return self._download_video_alternative(url)
-                        
-                    # Проверяем, что файл можно открыть с помощью OpenCV
-                    cap = cv2.VideoCapture(video_path)
-                    if not cap.isOpened():
-                        self.logger.warning(f"Downloaded video cannot be opened: {video_path}")
-                        cap.release()
-                        return self._download_video_alternative(url)
-                    cap.release()
-                    
-                    self.logger.info(f"Video downloaded successfully: {video_path}")
-                    return video_path
-            except Exception as e:
-                self.logger.error(f"Error downloading video with yt-dlp: {e}")
-                return self._download_video_alternative(url)
-                
-        except Exception as e:
-            self.logger.error(f"Error downloading video: {e}")
-            # Пробуем альтернативный метод загрузки
-            return self._download_video_alternative(url)
+            self.logger.error(f"Error cleaning up temporary files: {e}")
 
 def extract_audio(video_path, config):
     """Извлечение аудио из видео"""
