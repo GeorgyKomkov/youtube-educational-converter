@@ -66,6 +66,17 @@ function fetchYouTubeCookies() {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
+        // Затем загружаем страницу с видео для получения дополнительных куков
+        return fetch('/youtube-proxy?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ', {
+            method: 'GET',
+            credentials: 'include'
+        });
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
         // Теперь запрашиваем сохранение куков
         return fetch('/get-youtube-cookies', {
             method: 'GET',

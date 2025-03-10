@@ -606,28 +606,53 @@ def youtube_proxy():
         session = requests.Session()
         
         # Копируем заголовки из запроса пользователя
-        headers = {}
-        for header in request.headers:
-            if header[0].lower() not in ['host', 'connection', 'content-length']:
-                headers[header[0]] = header[1]
+        headers = {
+            'User-Agent': request.headers.get('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'),
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Referer': 'https://www.youtube.com/',
+            'Origin': 'https://www.youtube.com',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-Fetch-User': '?1',
+            'TE': 'trailers'
+        }
         
         # Копируем куки из запроса пользователя
-        for cookie in request.cookies:
-            session.cookies.set(cookie, request.cookies.get(cookie))
+        for cookie_name, cookie_value in request.cookies.items():
+            session.cookies.set(cookie_name, cookie_value)
         
         # Делаем запрос к YouTube
         response = session.get(url, headers=headers)
         
         # Получаем куки из ответа и сохраняем их
         cookies = []
-        for name, value in session.cookies.items():
-            cookie = {
-                'name': name,
-                'value': value,
-                'domain': '.youtube.com',
-                'path': '/'
+        for cookie in session.cookies:
+            cookie_dict = {
+                'name': cookie.name,
+                'value': cookie.value,
+                'domain': cookie.domain,
+                'path': cookie.path
             }
-            cookies.append(cookie)
+            cookies.append(cookie_dict)
+        
+        # Добавляем дополнительные куки для обхода защиты от ботов
+        additional_cookies = [
+            {'name': 'CONSENT', 'value': 'YES+cb', 'domain': '.youtube.com', 'path': '/'},
+            {'name': 'VISITOR_INFO1_LIVE', 'value': 'y-NbKGnXEZw', 'domain': '.youtube.com', 'path': '/'},
+            {'name': 'GPS', 'value': '1', 'domain': '.youtube.com', 'path': '/'},
+            {'name': 'YSC', 'value': 'DwKYMZ-9Ky4', 'domain': '.youtube.com', 'path': '/'},
+            {'name': 'PREF', 'value': 'f4=4000000&tz=Europe%2FMoscow', 'domain': '.youtube.com', 'path': '/'},
+            {'name': 'LOGIN_INFO', 'value': 'AFmmF2swRQIhAP5uKrlfFRJ_XmEwZeJzGda3ZCNR9tiXV9mMr5jMCQZBAiAw3WPHy-dEOeHrJL0nVTI1CzHYmQIBKQAQDhkwuDQpMw:QUQ3MjNmeXJnUmRiNGVHMHBJdGxCNV9QMFBrNWNTVnVLUWFLN0xQTHNkWUJfSHJqWUFKSXVDVmNlVXBITXRhNGFKSHlKVTJxUWNfVFJVWnJKSXZMVnVxdVZyTGFKRnJIZVBxZWJLdVVkRGJzRnJvWGJXdVBfVnVLUWFLN0xQTHNkWUJfSHJqWUFKSXVDVmNlVXBITXRhNGFKSHlKVTJxUWNfVFJVWnJKSXZMVnVxdVZyTGFKRnJIZVBxZWJLdVVkRGJzRnJvWGJXdVA=', 'domain': '.youtube.com', 'path': '/'}
+        ]
+        
+        # Добавляем дополнительные куки, если их еще нет
+        for additional_cookie in additional_cookies:
+            if not any(c.get('name') == additional_cookie['name'] for c in cookies):
+                cookies.append(additional_cookie)
         
         # Сохраняем куки в файл
         if cookies:

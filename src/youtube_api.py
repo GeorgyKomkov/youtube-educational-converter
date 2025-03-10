@@ -132,12 +132,18 @@ class YouTubeAPI:
             return False
 
     def download_video(self, url, output_path):
-        """Загрузка видео с использованием yt-dlp"""
+        """Скачивание видео с YouTube"""
         try:
-            # Создаем директорию для выходного файла
+            # Создаем директорию для выходного файла, если она не существует
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            # Настройки для yt-dlp с улучшенными параметрами для обхода ограничений
+            # Проверяем наличие файла куков
+            cookie_file = '/app/config/youtube_netscape.cookies'
+            if not os.path.exists(cookie_file):
+                self.logger.warning(f"Cookie file not found: {cookie_file}")
+                self.save_cookies_to_netscape_format()
+            
+            # Опции для yt-dlp
             ydl_opts = {
                 'format': 'best',
                 'outtmpl': output_path,
@@ -146,50 +152,38 @@ class YouTubeAPI:
                 'no_warnings': False,
                 'ignoreerrors': False,
                 'verbose': True,
-                # Дополнительные параметры для обхода ограничений
                 'extractor_args': {
                     'youtube': {
-                        'player_client': ['android'],
+                        'player_client': ['android', 'web'],
                         'player_skip': ['webpage', 'js'],
                         'compat_opts': ['no-youtube-unavailable-videos']
                     }
                 },
-                # Имитация браузера
                 'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'cookiefile': cookie_file,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.101 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-us,en;q=0.5',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Referer': 'https://www.youtube.com/'
+                }
             }
             
-            # Добавляем куки если они есть
-            if self.cookies:
-                cookie_file = Path('/app/config/youtube_netscape.cookies')
-                if cookie_file.exists():
-                    ydl_opts['cookiefile'] = str(cookie_file)
-                    self.logger.info(f"Using cookie file: {cookie_file}")
-            
+            self.logger.info(f"Using cookie file: {cookie_file}")
             self.logger.info(f"Starting download of {url} with yt-dlp")
+            
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
             
-            # Проверяем, что файл скачался
-            if os.path.exists(output_path):
-                self.logger.info(f"Video downloaded successfully: {output_path}")
-                return True
-            else:
-                # Если файл не скачался, пробуем другой формат
-                self.logger.warning(f"File not found at {output_path}, trying different format")
-                
-                # Пробуем скачать в формате mp4
-                ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
-                    
-                if os.path.exists(output_path):
-                    self.logger.info(f"Video downloaded successfully with alternative format: {output_path}")
-                    return True
-                else:
-                    raise FileNotFoundError(f"Failed to download video to {output_path}")
-                
+            # Проверяем, что файл был скачан
+            if not os.path.exists(output_path):
+                raise FileNotFoundError(f"Downloaded file not found at {output_path}")
+            
+            self.logger.info(f"Video downloaded successfully to {output_path}")
+            return output_path
         except Exception as e:
-            self.logger.error(f"Failed to download video: {e}", exc_info=True)
+            self.logger.error(f"Failed to download video: {e}")
             raise
 
     def _extract_video_id(self, url):
@@ -280,4 +274,39 @@ class YouTubeAPI:
                 return None
         except Exception as e:
             self.logger.error(f"Error loading cookies: {e}", exc_info=True)
+            return None
+
+    def save_cookies_to_netscape_format(self):
+        """Сохранение куков в формате Netscape для yt-dlp"""
+        try:
+            cookie_file = '/app/config/youtube.cookies'
+            netscape_cookie_file = '/app/config/youtube_netscape.cookies'
+            
+            if not os.path.exists(cookie_file):
+                self.logger.warning(f"Cookie file not found: {cookie_file}")
+                return
+            
+            with open(cookie_file, 'r') as f:
+                cookies = json.load(f)
+            
+            with open(netscape_cookie_file, 'w') as f:
+                f.write("# Netscape HTTP Cookie File\n")
+                f.write("# This file is generated by youtube-converter. Do not edit.\n\n")
+                
+                for cookie in cookies:
+                    domain = cookie.get('domain', '.youtube.com')
+                    flag = "TRUE"
+                    path = cookie.get('path', '/')
+                    secure = "TRUE"
+                    expiry = "0"  # Не истекает
+                    name = cookie.get('name', '')
+                    value = cookie.get('value', '')
+                    
+                    if name and value:
+                        f.write(f"{domain}\t{flag}\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n")
+            
+            self.logger.info(f"Saved cookies to Netscape format at {netscape_cookie_file}")
+            return netscape_cookie_file
+        except Exception as e:
+            self.logger.error(f"Error saving cookies to Netscape format: {e}")
             return None
