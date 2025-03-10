@@ -52,63 +52,43 @@ function showCookieConsent() {
     });
 }
 
-// Функция для получения куков через прокси
-function fetchYouTubeCookies() {
-    console.log('Getting YouTube cookies through proxy...');
-    
-    // Сначала загружаем YouTube через прокси
-    fetch('/youtube-proxy?url=https://www.youtube.com/', {
-        method: 'GET',
-        credentials: 'include' // Включаем куки в запрос
-    })
-    .then(response => {
+// Функция для получения куков YouTube
+async function fetchYouTubeCookies() {
+    try {
+        console.log('Fetching YouTube cookies...');
+        const response = await fetch('/get-youtube-cookies');
+        console.log('YouTube cookies response status:', response.status);
+        
         if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Error fetching YouTube cookies:', errorText);
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        // Затем загружаем страницу с видео для получения дополнительных куков
-        return fetch('/youtube-proxy?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ', {
-            method: 'GET',
-            credentials: 'include'
-        });
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        const data = await response.json();
+        console.log('YouTube cookies response:', data);
         
-        // Теперь запрашиваем сохранение куков
-        return fetch('/get-youtube-cookies', {
-            method: 'GET',
-            credentials: 'include'
-        });
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
         if (data.status === 'success') {
-            console.log('Cookies fetched successfully:', data.message);
+            console.log('YouTube cookies fetched successfully');
             showAlert('Куки YouTube успешно получены', 'success');
         } else {
-            console.error('Failed to fetch cookies:', data.error);
-            showAlert('Не удалось получить куки YouTube. Некоторые видео могут быть недоступны.', 'warning');
+            console.error('Failed to fetch YouTube cookies:', data.error);
+            showAlert('Не удалось получить куки YouTube', 'error');
         }
-    })
-    .catch(error => {
-        console.error('Error fetching cookies:', error);
+    } catch (error) {
+        console.error('Error fetching YouTube cookies:', error);
         showAlert('Ошибка при получении куков YouTube', 'error');
-    });
+    }
 }
 
 // Обработка отправки формы
 async function handleFormSubmit(event) {
     event.preventDefault();
+    console.log('Form submitted');
     
     const videoUrl = document.getElementById('video-url').value;
+    console.log('Video URL:', videoUrl);
+    
     if (!videoUrl) {
         showAlert('Введите URL видео', 'warning');
         return;
@@ -116,6 +96,12 @@ async function handleFormSubmit(event) {
 
     try {
         showStatus('Начинаем обработку видео...', 'info');
+        console.log('Sending request to process video:', videoUrl);
+        
+        // Добавляем отладочную информацию
+        console.log('Request URL:', '/process_video');
+        console.log('Request method:', 'POST');
+        console.log('Request body:', JSON.stringify({ url: videoUrl }));
         
         const response = await fetch('/process_video', {
             method: 'POST',
@@ -126,11 +112,17 @@ async function handleFormSubmit(event) {
             credentials: 'include'
         });
 
+        console.log('Response status:', response.status);
+        console.log('Response headers:', [...response.headers.entries()]);
+        
         if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Error response:', errorText);
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         const data = await response.json();
+        console.log('Response data:', data);
         
         if (data.task_id) {
             startStatusCheck(data.task_id);
@@ -139,7 +131,7 @@ async function handleFormSubmit(event) {
         }
     } catch (error) {
         console.error('Error:', error);
-        showAlert('Ошибка при обработке видео', 'error');
+        showAlert('Ошибка при обработке видео: ' + error.message, 'error');
     }
 }
 
