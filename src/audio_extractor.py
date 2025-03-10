@@ -54,21 +54,23 @@ class AudioExtractor:
             # Проверка места на диске
             self._check_disk_space(video_path)
             
+            # Путь к выходному файлу
+            output_path = self.temp_dir / f"{Path(video_path).stem}.wav"
+            
             # Конвертируем в моно с низким битрейтом
             command = [
-                'ffmpeg',
                 '-i', str(video_path),
                 '-vn',
                 '-ac', '1',  # моно
                 '-ar', '16000',  # частота дискретизации
                 '-b:a', '64k',  # низкий битрейт
                 '-f', 'wav',
-                str(self.temp_dir / f"{Path(video_path).stem}.wav")
+                str(output_path)
             ]
             
             # Используем низкий приоритет процесса
             process = subprocess.Popen(
-                ['nice', '-n', '19'] + command,
+                ['nice', '-n', '19', 'ffmpeg'] + command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
@@ -78,7 +80,7 @@ class AudioExtractor:
             if process.returncode != 0:
                 raise RuntimeError(f"FFmpeg failed: {stderr.decode()}")
                 
-            return str(self.temp_dir / f"{Path(video_path).stem}.wav")
+            return str(output_path)
             
         except Exception as e:
             logger.error(f"Error in audio extraction: {str(e)}")

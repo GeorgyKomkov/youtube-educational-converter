@@ -67,9 +67,12 @@ class FrameProcessor:
             import clip
             model, preprocess = clip.load("ViT-B/32", device=self.device)
             return {"model": model, "preprocess": preprocess}
+        except ImportError:
+            self.logger.warning("CLIP module not installed, some features will be disabled")
+            return None
         except Exception as e:
             self.logger.error(f"Error loading CLIP: {e}")
-            raise
+            return None
 
     def process(self, video_path):
         """Обработка видео и извлечение кадров"""

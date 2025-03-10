@@ -119,32 +119,49 @@ def cleanup_temp(temp_dir):
 
 class VideoProcessor:
     def __init__(self, config):
+        """Инициализация процессора видео"""
         self.config = config
-        self.temp_dir = Path(config['temp_dir'])
-        self.temp_dir.mkdir(exist_ok=True)
-        self.logger = logging.getLogger(__name__)  # Добавляем инициализацию логгера
+        self.temp_dir = config.get('temp_dir', '/app/temp')
+        self.output_dir = config.get('output_dir', '/app/output')
+        self.logger = logging.getLogger(__name__)
+        
+        # Создаем директории, если они не существуют
+        os.makedirs(self.temp_dir, exist_ok=True)
+        os.makedirs(self.output_dir, exist_ok=True)
+        
+        # Инициализируем экстрактор аудио
+        self.audio_extractor = AudioExtractor(self.temp_dir)
+        
+        # Инициализируем генератор выходных данных
+        self.output_generator = OutputGenerator(self.output_dir)
+        
+        # Проверяем наличие необходимых инструментов
+        self._check_dependencies()
+    
+    def _check_dependencies(self):
+        """Проверка наличия необходимых инструментов"""
         try:
-            # Создаем временные директории если их нет
-            output_dir = self.config.get('output_dir', '/app/output')
+            # Проверяем ffmpeg
+            subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+            self.logger.info("ffmpeg is available")
             
-            # Создаем директории с правильными правами
-            os.makedirs(output_dir, exist_ok=True)
-            os.chmod(output_dir, 0o777)
+            # Проверяем yt-dlp
+            try:
+                subprocess.run(['yt-dlp', '--version'], capture_output=True, check=True)
+                self.logger.info("yt-dlp is available")
+            except (subprocess.SubprocessError, FileNotFoundError):
+                self.logger.warning("yt-dlp is not available")
             
-            self.logger.info(f"Directories created/checked: temp_dir={self.temp_dir}, output_dir={output_dir}")
-            
-            # Инициализация модели
-            model_name = self.config.get('transcription', {}).get('model', 'tiny')
-            self.logger.info(f"Loading whisper model: {model_name}")
-            
-            self.whisper_model = load_model(
-                name=model_name,
-                device="cuda" if torch.cuda.is_available() else "cpu"
-            )
-            self.logger.info("Whisper model loaded successfully")
+            # Проверяем youtube-dl
+            try:
+                subprocess.run(['youtube-dl', '--version'], capture_output=True, check=True)
+                self.logger.info("youtube-dl is available")
+            except (subprocess.SubprocessError, FileNotFoundError):
+                self.logger.warning("youtube-dl is not available")
+                
         except Exception as e:
-            self.logger.error(f"Failed to initialize VideoProcessor: {e}")
-            raise RuntimeError(f"Initialization failed: {e}")
+            self.logger.error(f"Error checking dependencies: {e}")
+            raise
 
     def download_video(self, video_url):
         """Download video from YouTube"""
@@ -184,82 +201,57 @@ class VideoProcessor:
             raise RuntimeError(f"Failed to download video: {str(e)}")
 
     def download_video_alternative(self, url, output_path):
-        """Альтернативный метод скачивания видео"""
+        """Альтернативный метод скачивания видео с помощью yt-dlp"""
         try:
-            self.logger.info(f"Trying alternative download method for {url}")
+            self.logger.info(f"Using yt-dlp to download {url}")
             
-            # Создаем директорию для выходного файла
+            # Создаем директорию для выходного файла, если она не существует
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            # Используем subprocess для запуска yt-dlp напрямую
-            cmd = [
-                'yt-dlp',
-                '--format', 'best[ext=mp4]/best',
-                '--output', output_path,
-                '--no-playlist',
-                '--verbose',
-                '--geo-bypass',
-                '--cookies', '/app/config/youtube_netscape.cookies',
-                '--user-agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36',
-                '--referer', 'https://www.youtube.com/',
-                '--add-header', 'Accept-Language:en-US,en;q=0.9',
-                '--extractor-args', 'youtube:player_client=android,web,tv,ios',
-                url
-            ]
+            # Проверяем наличие куков
+            cookie_file = '/app/config/youtube_netscape.cookies'
+            cookie_option = []
+            if os.path.exists(cookie_file):
+                cookie_option = ['--cookies', cookie_file]
+                self.logger.info(f"Using cookies from {cookie_file}")
             
-            self.logger.info(f"Running command: {' '.join(cmd)}")
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True
-            )
+            # Настройки для yt-dlp
+            ydl_opts = {
+                'format': 'best[ext=mp4]/best',
+                'outtmpl': output_path,
+                'quiet': True,
+                'no_warnings': True,
+                'ignoreerrors': False,
+                'cookiefile': cookie_file if os.path.exists(cookie_file) else None
+            }
             
-            stdout, stderr = process.communicate()
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
             
-            if process.returncode != 0:
-                self.logger.error(f"yt-dlp error: {stderr}")
-                raise Exception(f"yt-dlp failed with code {process.returncode}: {stderr}")
-            
-            # Проверяем, что файл был скачан
-            if not os.path.exists(output_path):
-                raise FileNotFoundError(f"Downloaded file not found at {output_path}")
-            
-            self.logger.info(f"Video downloaded successfully to {output_path}")
-            return output_path
+            if os.path.exists(output_path):
+                self.logger.info(f"Video downloaded successfully to {output_path}")
+                return output_path
+            else:
+                raise FileNotFoundError(f"yt-dlp did not create the output file at {output_path}")
+                
         except Exception as e:
-            self.logger.error(f"Alternative download failed: {e}")
+            self.logger.error(f"Error in alternative download: {e}")
             raise
-
-    def transcribe_audio(self, audio_path):
-        try:
-            logger.info(f"Starting transcription of {audio_path}")
-            # Загружаем аудио через whisper
-            audio = whisper.load_audio(audio_path)
-            # Транскрибируем
-            result = self.whisper_model.transcribe(audio)
-            logger.info("Transcription completed successfully")
-            return result["text"]
-        except Exception as e:
-            logger.error(f"Transcription failed: {e}")
-            raise RuntimeError(f"Failed to transcribe audio: {e}")
 
     def process_video(self, url):
         """Обработка видео"""
         try:
             # Создаем временную директорию для файлов
-            temp_dir = os.path.join('/app/temp', str(uuid.uuid4()))
+            temp_dir = os.path.join(self.temp_dir, str(uuid.uuid4()))
             os.makedirs(temp_dir, exist_ok=True)
             
-            # Создаем директорию для выходных файлов
-            output_dir = '/app/output'
-            os.makedirs(output_dir, exist_ok=True)
+            self.logger.info(f"Created temp directory: {temp_dir}")
             
-            self.logger.info(f"Directories created/checked: temp_dir={temp_dir}, output_dir={output_dir}")
-            
-            # Загружаем модель Whisper
-            self.logger.info(f"Loading whisper model: {self.config['whisper']['model']}")
-            model = whisper.load_model(self.config['whisper']['model'])
+            # Загружаем модель Whisper с параметром по умолчанию
+            whisper_config = self.config.get('whisper', {'model': 'base'})
+            model_name = whisper_config.get('model', 'base')
+            self.logger.info(f"Loading whisper model: {model_name}")
+            model = whisper.load_model(model_name)
             self.logger.info("Whisper model loaded successfully")
             
             # Инициализируем YouTube API
@@ -317,8 +309,7 @@ class VideoProcessor:
             
             # Генерируем PDF
             self.logger.info("Generating PDF")
-            output_generator = OutputGenerator(output_dir)
-            pdf_path = output_generator.generate_output(segments['text'], frames, video_title)
+            pdf_path = self.output_generator.generate_output(segments['text'], frames, video_title)
             
             # Очищаем временные файлы
             self._cleanup_temp_files([audio_path])
@@ -353,21 +344,24 @@ class VideoProcessor:
             raise
 
     def _cleanup_temp_files(self, temp_files):
+        """Очистка временных файлов"""
         for file_path in temp_files:
             try:
                 if file_path and os.path.exists(file_path):
                     os.remove(file_path)
+                    self.logger.info(f"Removed temporary file: {file_path}")
             except Exception as e:
-                logger.error(f"Error removing temp file {file_path}: {e}")
+                self.logger.error(f"Error removing temp file {file_path}: {e}")
 
     def _extract_audio(self, video_path):
         """Извлечение аудио из видео в низком качестве"""
         try:
-            return self.audio_extractor.extract(
-                video_path, 
-                quality='low',
-                sample_rate=16000
-            )
+            self.logger.info(f"Extracting audio from video: {video_path}")
+            
+            # Используем инициализированный экстрактор аудио
+            audio_path = self.audio_extractor.extract(video_path)
+            self.logger.info(f"Audio extracted to: {audio_path}")
+            return audio_path
         except Exception as e:
             self.logger.error(f"Error extracting audio: {e}")
             raise
@@ -377,7 +371,12 @@ class VideoProcessor:
         try:
             cap = cv2.VideoCapture(video_path)
             frames = []
-            interval = self.config['processing']['frame_interval']
+            
+            # Получаем параметры из конфигурации с значениями по умолчанию
+            processing_config = self.config.get('processing', {})
+            interval = processing_config.get('frame_interval', 30)
+            width = processing_config.get('image_max_width', 640)
+            quality = processing_config.get('image_quality', 85)
             
             while cap.isOpened():
                 ret, frame = cap.read()
@@ -385,13 +384,11 @@ class VideoProcessor:
                     break
                     
                 # Уменьшаем размер
-                width = self.config['processing']['image_max_width']
                 height = int(frame.shape[0] * width / frame.shape[1])
                 frame = cv2.resize(frame, (width, height))
                 
                 # Сохраняем с низким качеством
-                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 
-                              self.config['processing']['image_quality']]
+                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
                 _, buffer = cv2.imencode('.jpg', frame, encode_param)
                 frames.append(buffer)
                 
@@ -421,7 +418,7 @@ class VideoProcessor:
             
             # Паттерны для различных форматов URL YouTube
             patterns = [
-                r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/|youtube\.com\/user\/\S+\/\S+\/|youtube\.com\/user\/\S+\/|youtube\.com\/\S+\/\S+\/|youtube\.com\/\S+\/|youtube\.com\/attribution_link\?a=\S+&u=\/watch\?v=|youtube\.com\/attribution_link\?a=\S+&u=)([^\"&?\/\s]{11})',
+                r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/|youtube\.com\/user\/\S+\/\S+\/|youtube\.com\/user\/\S+\/|youtube\.com\/\S+\/\S+\/|youtube\.com\/\S+\/|youtube\.com\/attribution_link\?a=\S+&u=\/watch\?v=)([^\"&?\/\s]{11})',
                 r'(?:youtube\.com\/shorts\/)([^\"&?\/\s]{11})',
                 r'(?:youtube\.com\/live\/)([^\"&?\/\s]{11})'
             ]

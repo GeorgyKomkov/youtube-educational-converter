@@ -120,5 +120,13 @@ except Exception as e:
 __version__ = '1.0.0'
 
 # Создаем директорию для логов в контейнере
-os.makedirs('/app/logs', exist_ok=True)
+try:
+    os.makedirs('/app/logs', exist_ok=True)
+    print("Created /app/logs directory")
+except Exception as e:
+    print(f"Error creating /app/logs directory: {e}")
+    # Используем относительный путь как запасной вариант
+    os.makedirs(LOG_DIR, exist_ok=True)
+    print(f"Created {LOG_DIR} directory instead")
+
 print("Initialization complete")  # Отладочный вывод
