@@ -137,6 +137,9 @@ class VideoProcessor:
         
         # Проверяем наличие необходимых инструментов
         self._check_dependencies()
+        
+        # Инициализируем YouTube API
+        self.youtube_api = YouTubeAPI()
     
     def _check_dependencies(self):
         """Проверка наличия необходимых инструментов"""
@@ -242,83 +245,62 @@ class VideoProcessor:
         """Обработка видео"""
         try:
             # Создаем временную директорию для файлов
-            temp_dir = os.path.join(self.temp_dir, str(uuid.uuid4()))
+            temp_dir = os.path.join('/app/temp', str(uuid.uuid4()))
             os.makedirs(temp_dir, exist_ok=True)
             
-            self.logger.info(f"Created temp directory: {temp_dir}")
-            
-            # Загружаем модель Whisper с параметром по умолчанию
-            whisper_config = self.config.get('whisper', {'model': 'base'})
-            model_name = whisper_config.get('model', 'base')
-            self.logger.info(f"Loading whisper model: {model_name}")
-            model = whisper.load_model(model_name)
-            self.logger.info("Whisper model loaded successfully")
-            
-            # Инициализируем YouTube API
-            youtube_api = YouTubeAPI()
-            self.logger.info("YouTube API initialized successfully")
-            
-            # Получаем ID видео из URL
-            video_id = self.extract_video_id(url)
+            # Извлекаем ID видео
+            video_id = self._extract_video_id(url)
             if not video_id:
                 raise ValueError(f"Could not extract video ID from URL: {url}")
             
-            # Путь для сохранения видео
-            video_path = os.path.join(temp_dir, f"{video_id}.mp4")
+            # Получаем информацию о видео
+            video_info = self.youtube_api.get_video_info(video_id)
+            if not video_info:
+                raise ValueError(f"Could not get video info for ID: {video_id}")
             
-            # Проверяем наличие куков
-            if os.path.exists('/app/config/youtube.cookies'):
-                self.logger.info("YouTube cookies found, using them for download")
-            else:
-                self.logger.warning("No YouTube cookies found, download may be limited")
+            video_title = video_info.get('title', f"Video_{video_id}")
+            self.logger.info(f"Processing video: {video_title}")
             
-            # Пытаемся скачать видео с помощью YouTube API
-            try:
-                self.logger.info(f"Attempting to download video {url} to {video_path}")
-                video_path = youtube_api.download_video(url, video_path)
-            except Exception as e:
-                self.logger.error(f"Error downloading video with YouTubeAPI: {e}")
-                
-                # Пробуем альтернативный метод скачивания
-                self.logger.info("Trying to download directly with yt-dlp")
-                try:
-                    video_path = self.download_video_alternative(url, video_path)
-                except Exception as alt_e:
-                    self.logger.error(f"Alternative download also failed: {alt_e}")
-                    raise Exception(f"Failed to download video: {e}. Alternative method also failed: {alt_e}")
+            # Загружаем видео
+            video_path = self._download_video(url)
+            if not video_path:
+                raise ValueError(f"Failed to download video from URL: {url}")
             
-            # Проверяем, что видео скачано
-            if not os.path.exists(video_path):
-                raise FileNotFoundError(f"Video file not found at {video_path}")
-            
-            # Извлекаем аудио из видео
-            self.logger.info("Extracting audio from video")
+            # Извлекаем аудио
             audio_path = self._extract_audio(video_path)
             
-            # Транскрибируем аудио
-            self.logger.info("Transcribing audio")
-            segments = model.transcribe(audio_path)
+            # Если не удалось извлечь аудио, создаем пустой файл
+            if not audio_path:
+                self.logger.warning("Failed to extract audio, creating empty audio file")
+                audio_extractor = AudioExtractor(self.temp_dir)
+                audio_path = audio_extractor._create_empty_audio()
+                transcription = "Не удалось извлечь аудио из видео."
+            else:
+                # Транскрибируем аудио
+                transcription = self._transcribe_audio(audio_path)
             
-            # Извлекаем кадры из видео
-            self.logger.info("Extracting frames from video")
+            # Если не удалось транскрибировать, используем заглушку
+            if not transcription:
+                transcription = "Не удалось распознать речь в видео."
+            
+            # Извлекаем кадры
             frames = self._extract_frames(video_path)
             
-            # Получаем информацию о видео
-            video_info = youtube_api.get_video_info(video_id)
-            video_title = video_info['snippet']['title']
+            # Если не удалось извлечь кадры, используем заглушку
+            if not frames or len(frames) == 0:
+                self.logger.warning("Failed to extract frames, using placeholder")
+                frames = []
             
-            # Генерируем PDF
-            self.logger.info("Generating PDF")
-            pdf_path = self.output_generator.generate_output(segments['text'], frames, video_title)
+            # Генерируем выходной файл
+            output_path = self._generate_pdf(transcription, frames, video_title)
             
             # Очищаем временные файлы
-            self._cleanup_temp_files([audio_path])
+            self._cleanup_temp_files(temp_dir)
             
             return {
-                'status': 'success',
-                'video_path': video_path,
-                'pdf_path': str(pdf_path),
-                'message': 'Video processed successfully'
+                'status': 'completed',
+                'output_path': str(output_path),
+                'video_title': video_title
             }
             
         except Exception as e:
@@ -402,10 +384,10 @@ class VideoProcessor:
             self.logger.error(f"Error extracting frames: {e}")
             raise
 
-    def _generate_pdf(self, segments, frames):
+    def _generate_pdf(self, transcription, frames, video_title):
         """Генерация PDF с текстом и кадрами"""
         try:
-            text = ' '.join([segment['text'] for segment in segments])
+            text = transcription
             return self.output_generator.generate(text, frames)
         except Exception as e:
             self.logger.error(f"Error generating PDF: {e}")

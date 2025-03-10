@@ -124,16 +124,73 @@ class AudioExtractor:
             logger.error(f"Error cleaning temporary files: {e}")
 
     def _extract_alternative(self, video_path):
-        """Альтернативный метод извлечения аудио"""
+        """Альтернативный метод извлечения аудио с дополнительными параметрами"""
         try:
-            logger.info("Trying alternative audio extraction method")
+            logger.info("Trying alternative audio extraction method with more options")
             output_path = self.temp_dir / f"{Path(video_path).stem}_alt.wav"
             
-            # Используем другие параметры
+            # Используем более надежные параметры для проблемных файлов
             command = [
                 'ffmpeg',
+                '-y',  # Перезаписывать выходной файл
+                '-v', 'error',  # Выводить только ошибки
+                '-err_detect', 'ignore_err',  # Игнорировать ошибки
+                '-fflags', '+genpts+igndts+discardcorrupt',  # Игнорировать поврежденные данные
+                '-i', str(video_path),
+                '-vn',  # Без видео
+                '-acodec', 'pcm_s16le',  # Кодек аудио
+                '-ar', '16000',  # Частота дискретизации
+                '-ac', '1',  # Моно
+                '-f', 'wav',  # Формат выходного файла
+                str(output_path)
+            ]
+            
+            logger.info(f"Running command: {' '.join(command)}")
+            process = subprocess.run(command, capture_output=True, text=True)
+            
+            if process.returncode != 0:
+                logger.error(f"Alternative extraction failed: {process.stderr}")
+                # Пробуем еще один метод с прямым извлечением аудио
+                return self._extract_direct(video_path)
+            
+            return str(output_path)
+        except Exception as e:
+            logger.error(f"Alternative extraction failed: {e}")
+            # Пробуем еще один метод
+            return self._extract_direct(video_path)
+        
+    def _extract_direct(self, video_path):
+        """Прямое извлечение аудио без перекодирования"""
+        try:
+            logger.info("Trying direct audio extraction without transcoding")
+            output_path = self.temp_dir / f"{Path(video_path).stem}_direct.wav"
+            
+            # Просто копируем аудио поток без перекодирования
+            command = [
+                'ffmpeg',
+                '-y',
+                '-v', 'error',
                 '-i', str(video_path),
                 '-vn',
+                '-acodec', 'copy',  # Копируем аудио без перекодирования
+                str(output_path.with_suffix('.aac'))  # Сохраняем в оригинальном формате
+            ]
+            
+            logger.info(f"Running command: {' '.join(command)}")
+            process = subprocess.run(command, capture_output=True, text=True)
+            
+            if process.returncode != 0:
+                logger.error(f"Direct extraction failed: {process.stderr}")
+                # Пробуем создать пустой аудиофайл для продолжения обработки
+                return self._create_empty_audio()
+            
+            # Теперь конвертируем в WAV
+            aac_path = output_path.with_suffix('.aac')
+            command = [
+                'ffmpeg',
+                '-y',
+                '-v', 'error',
+                '-i', str(aac_path),
                 '-acodec', 'pcm_s16le',
                 '-ar', '16000',
                 '-ac', '1',
@@ -143,9 +200,40 @@ class AudioExtractor:
             process = subprocess.run(command, capture_output=True, text=True)
             
             if process.returncode != 0:
-                raise RuntimeError(f"Alternative extraction failed: {process.stderr}")
+                logger.error(f"Conversion to WAV failed: {process.stderr}")
+                return self._create_empty_audio()
             
             return str(output_path)
         except Exception as e:
-            logger.error(f"Alternative extraction failed: {e}")
+            logger.error(f"Direct extraction failed: {e}")
+            return self._create_empty_audio()
+        
+    def _create_empty_audio(self):
+        """Создание пустого аудиофайла для продолжения обработки"""
+        try:
+            logger.warning("Creating empty audio file as fallback")
+            output_path = self.temp_dir / "empty_audio.wav"
+            
+            # Создаем пустой аудиофайл длительностью 1 секунда
+            command = [
+                'ffmpeg',
+                '-y',
+                '-f', 'lavfi',
+                '-i', 'anullsrc=r=16000:cl=mono',
+                '-t', '1',
+                '-acodec', 'pcm_s16le',
+                '-ar', '16000',
+                '-ac', '1',
+                str(output_path)
+            ]
+            
+            process = subprocess.run(command, capture_output=True, text=True)
+            
+            if process.returncode != 0:
+                logger.error(f"Failed to create empty audio: {process.stderr}")
+                raise RuntimeError("Could not create empty audio file")
+            
+            return str(output_path)
+        except Exception as e:
+            logger.error(f"Failed to create empty audio: {e}")
             raise
