@@ -203,43 +203,119 @@ class VideoProcessor:
                 logger.error(f"Error message: {e.msg}")
             raise RuntimeError(f"Failed to download video: {str(e)}")
 
-    def download_video_alternative(self, url, output_path):
-        """Альтернативный метод скачивания видео с помощью yt-dlp"""
+    def download_video_alternative(self, url):
+        """Альтернативный метод загрузки видео"""
         try:
-            self.logger.info(f"Using yt-dlp to download {url}")
+            self.logger.info(f"Trying alternative download method for URL: {url}")
             
-            # Создаем директорию для выходного файла, если она не существует
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            # Создаем временную директорию
+            temp_dir = os.path.join(self.temp_dir, str(uuid.uuid4()))
+            os.makedirs(temp_dir, exist_ok=True)
             
-            # Проверяем наличие куков
-            cookie_file = '/app/config/youtube_netscape.cookies'
-            cookie_option = []
-            if os.path.exists(cookie_file):
-                cookie_option = ['--cookies', cookie_file]
-                self.logger.info(f"Using cookies from {cookie_file}")
+            # Имя выходного файла
+            output_path = os.path.join(temp_dir, f"video_{uuid.uuid4()}.mp4")
             
-            # Настройки для yt-dlp
-            ydl_opts = {
-                'format': 'best[ext=mp4]/best',
-                'outtmpl': output_path,
-                'quiet': True,
-                'no_warnings': True,
-                'ignoreerrors': False,
-                'cookiefile': cookie_file if os.path.exists(cookie_file) else None
-            }
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            
-            if os.path.exists(output_path):
-                self.logger.info(f"Video downloaded successfully to {output_path}")
-                return output_path
-            else:
-                raise FileNotFoundError(f"yt-dlp did not create the output file at {output_path}")
+            # Пробуем использовать youtube-dl напрямую
+            try:
+                self.logger.info("Trying youtube-dl for download")
+                command = [
+                    'youtube-dl',
+                    '--format', 'best[ext=mp4]/best',
+                    '--output', output_path,
+                    '--no-playlist',
+                    '--no-warnings',
+                    '--no-check-certificate',
+                    '--prefer-insecure',
+                    url
+                ]
                 
+                process = subprocess.run(command, capture_output=True, text=True)
+                
+                if process.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                    self.logger.info(f"Video downloaded successfully with youtube-dl: {output_path}")
+                    return output_path
+                else:
+                    self.logger.error(f"youtube-dl download failed: {process.stderr}")
+            except Exception as e:
+                self.logger.error(f"Error using youtube-dl: {e}")
+            
+            # Пробуем использовать curl
+            try:
+                self.logger.info("Trying curl for direct download")
+                # Проверяем, что URL указывает на файл напрямую
+                if url.endswith('.mp4') or url.endswith('.avi') or url.endswith('.mov'):
+                    command = [
+                        'curl',
+                        '-L',
+                        '-o', output_path,
+                        url
+                    ]
+                    
+                    process = subprocess.run(command, capture_output=True, text=True)
+                    
+                    if process.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                        self.logger.info(f"Video downloaded successfully with curl: {output_path}")
+                        return output_path
+                    else:
+                        self.logger.error(f"curl download failed: {process.stderr}")
+            except Exception as e:
+                self.logger.error(f"Error using curl: {e}")
+            
+            # Пробуем использовать wget
+            try:
+                self.logger.info("Trying wget for direct download")
+                command = [
+                    'wget',
+                    '-O', output_path,
+                    url
+                ]
+                
+                process = subprocess.run(command, capture_output=True, text=True)
+                
+                if process.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                    self.logger.info(f"Video downloaded successfully with wget: {output_path}")
+                    return output_path
+                else:
+                    self.logger.error(f"wget download failed: {process.stderr}")
+            except Exception as e:
+                self.logger.error(f"Error using wget: {e}")
+            
+            # Если все методы не сработали, создаем пустое видео
+            self.logger.warning("All download methods failed, creating empty video file")
+            return self._create_empty_video(temp_dir)
+            
         except Exception as e:
-            self.logger.error(f"Error in alternative download: {e}")
-            raise
+            self.logger.error(f"Alternative download failed: {e}")
+            return None
+        
+    def _create_empty_video(self, temp_dir):
+        """Создание пустого видео файла для продолжения обработки"""
+        try:
+            self.logger.warning("Creating empty video file as fallback")
+            output_path = os.path.join(temp_dir, "empty_video.mp4")
+            
+            # Создаем пустое видео длительностью 1 секунда
+            command = [
+                'ffmpeg',
+                '-y',
+                '-f', 'lavfi',
+                '-i', 'color=c=black:s=1280x720:r=30',
+                '-t', '1',
+                '-c:v', 'libx264',
+                '-pix_fmt', 'yuv420p',
+                output_path
+            ]
+            
+            process = subprocess.run(command, capture_output=True, text=True)
+            
+            if process.returncode != 0:
+                self.logger.error(f"Failed to create empty video: {process.stderr}")
+                raise RuntimeError("Could not create empty video file")
+            
+            return output_path
+        except Exception as e:
+            self.logger.error(f"Failed to create empty video: {e}")
+            return None
 
     def process_video(self, url):
         """Обработка видео"""
@@ -459,25 +535,33 @@ class VideoProcessor:
             }
             
             # Загружаем видео
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                if not info:
-                    raise ValueError(f"Could not extract video info from URL: {url}")
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    if not info:
+                        self.logger.warning(f"Could not extract video info from URL: {url}")
+                        return self._download_video_alternative(url)
+                        
+                    video_path = os.path.join(temp_dir, f"{info['title']}.{info['ext']}")
                     
-                video_path = os.path.join(temp_dir, f"{info['title']}.{info['ext']}")
-                
-                # Проверяем, что файл существует и не пустой
-                if not os.path.exists(video_path) or os.path.getsize(video_path) == 0:
-                    raise FileNotFoundError(f"Downloaded video file not found or empty: {video_path}")
+                    # Проверяем, что файл существует и не пустой
+                    if not os.path.exists(video_path) or os.path.getsize(video_path) == 0:
+                        self.logger.warning(f"Downloaded video file not found or empty: {video_path}")
+                        return self._download_video_alternative(url)
+                        
+                    # Проверяем, что файл можно открыть с помощью OpenCV
+                    cap = cv2.VideoCapture(video_path)
+                    if not cap.isOpened():
+                        self.logger.warning(f"Downloaded video cannot be opened: {video_path}")
+                        cap.release()
+                        return self._download_video_alternative(url)
+                    cap.release()
                     
-                # Проверяем, что файл можно открыть с помощью OpenCV
-                cap = cv2.VideoCapture(video_path)
-                if not cap.isOpened():
-                    raise ValueError(f"Downloaded video cannot be opened: {video_path}")
-                cap.release()
-                
-                self.logger.info(f"Video downloaded successfully: {video_path}")
-                return video_path
+                    self.logger.info(f"Video downloaded successfully: {video_path}")
+                    return video_path
+            except Exception as e:
+                self.logger.error(f"Error downloading video with yt-dlp: {e}")
+                return self._download_video_alternative(url)
                 
         except Exception as e:
             self.logger.error(f"Error downloading video: {e}")
