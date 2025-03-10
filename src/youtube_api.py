@@ -143,31 +143,39 @@ class YouTubeAPI:
                 self.logger.warning(f"Cookie file not found: {cookie_file}")
                 self.save_cookies_to_netscape_format()
             
-            # Опции для yt-dlp
+            # Опции для yt-dlp с расширенными настройками для обхода защиты
             ydl_opts = {
-                'format': 'best',
+                'format': 'best[ext=mp4]/best',
                 'outtmpl': output_path,
                 'noplaylist': True,
                 'quiet': False,
                 'no_warnings': False,
                 'ignoreerrors': False,
                 'verbose': True,
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': ['android', 'web'],
-                        'player_skip': ['webpage', 'js'],
-                        'compat_opts': ['no-youtube-unavailable-videos']
-                    }
-                },
-                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 'cookiefile': cookie_file,
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.101 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                     'Accept-Language': 'en-us,en;q=0.5',
                     'Sec-Fetch-Mode': 'navigate',
                     'Referer': 'https://www.youtube.com/'
-                }
+                },
+                # Добавляем опции для обхода защиты от ботов
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android', 'web', 'tv', 'ios'],
+                        'player_skip': [],
+                        'compat_opts': ['no-youtube-unavailable-videos']
+                    }
+                },
+                # Используем все доступные методы
+                'external_downloader_args': ['-v'],
+                'socket_timeout': 30,
+                'retries': 10,
+                'fragment_retries': 10,
+                'skip_unavailable_fragments': True,
+                'force_generic_extractor': False
             }
             
             self.logger.info(f"Using cookie file: {cookie_file}")
@@ -177,6 +185,19 @@ class YouTubeAPI:
                 ydl.download([url])
             
             # Проверяем, что файл был скачан
+            if not os.path.exists(output_path):
+                # Если не удалось скачать с куками, пробуем без них
+                self.logger.warning("Failed to download with cookies, trying without cookies")
+                ydl_opts.pop('cookiefile', None)
+                
+                # Добавляем дополнительные опции для обхода ограничений
+                ydl_opts['geo_bypass'] = True
+                ydl_opts['geo_bypass_country'] = 'US'
+                
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+            
+            # Проверяем еще раз
             if not os.path.exists(output_path):
                 raise FileNotFoundError(f"Downloaded file not found at {output_path}")
             

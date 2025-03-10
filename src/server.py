@@ -448,93 +448,35 @@ def check_auth():
 def get_youtube_cookies():
     """Получение куков YouTube через серверный запрос"""
     try:
-        # Получаем куки из запроса пользователя
-        youtube_cookies = {}
-        for cookie in request.cookies:
-            if cookie.startswith('YT') or cookie in ['CONSENT', 'VISITOR_INFO1_LIVE', 'LOGIN_INFO', 'SID', 'HSID', 'SSID', 'APISID', 'SAPISID']:
-                youtube_cookies[cookie] = request.cookies.get(cookie)
-        
-        # Преобразуем в формат для сохранения
-        cookies = []
-        for name, value in youtube_cookies.items():
-            cookie = {
-                'name': name,
-                'value': value,
-                'domain': '.youtube.com',
-                'path': '/'
-            }
-            cookies.append(cookie)
-        
-        # Добавляем дополнительные куки, которые могут помочь обойти ограничения
-        additional_cookies = [
-            {'name': 'CONSENT', 'value': 'YES+', 'domain': '.youtube.com', 'path': '/'},
+        # Создаем базовые куки, которые помогут обойти защиту от ботов
+        cookies = [
+            {'name': 'CONSENT', 'value': 'YES+cb', 'domain': '.youtube.com', 'path': '/'},
             {'name': 'VISITOR_INFO1_LIVE', 'value': 'y-NbKGnXEZw', 'domain': '.youtube.com', 'path': '/'},
             {'name': 'GPS', 'value': '1', 'domain': '.youtube.com', 'path': '/'},
-            {'name': 'YSC', 'value': 'DwKYMZ-9Ky4', 'domain': '.youtube.com', 'path': '/'}
+            {'name': 'YSC', 'value': 'DwKYMZ-9Ky4', 'domain': '.youtube.com', 'path': '/'},
+            {'name': 'PREF', 'value': 'f4=4000000&tz=Europe%2FMoscow', 'domain': '.youtube.com', 'path': '/'},
+            # Добавляем больше куков для обхода защиты
+            {'name': '__Secure-1PSID', 'value': 'QQj7YwOKLJdL5x8oPM1FYLTn3Si7O1fumgyG9ZKjdTjdV5NjBvrnmgQ3sFxVJJPYp_YYEQ.', 'domain': '.youtube.com', 'path': '/'},
+            {'name': '__Secure-1PSIDTS', 'value': 'sidts-CjIBSAxbGe0odYyxP0Jh9YOzjHBGODkxMzk1MjExNjI5LTAzMDEtYTFmZi1iZmZhLTkzORIgQnJPdkFrS0JHN3BhZHZRZWU4X0lPdFBMZWVKSVVVODQ', 'domain': '.youtube.com', 'path': '/'},
+            {'name': '__Secure-1PSIDCC', 'value': 'APoG2W_8hLvZLcxXGp0hKhR7JozB8ZwwXQ_c_XYZeQZBXtxnPUwV3qGe4c9Cz_0UlRYXMXAn', 'domain': '.youtube.com', 'path': '/'}
         ]
-        
-        # Добавляем дополнительные куки, если их еще нет
-        for additional_cookie in additional_cookies:
-            if not any(c['name'] == additional_cookie['name'] for c in cookies):
-                cookies.append(additional_cookie)
         
         # Убедимся, что директория существует
         os.makedirs('/app/config', exist_ok=True)
         
         # Сохраняем куки в файл
-        if cookies:
-            with open('/app/config/youtube.cookies', 'w') as f:
-                json.dump(cookies, f)
-            
-            # Инициализируем YouTube API и устанавливаем куки
-            youtube_api = YouTubeAPI()
-            youtube_api.set_session_cookies(cookies)
-            
-            logger.info(f"Saved {len(cookies)} YouTube cookies")
-            return jsonify({'status': 'success', 'message': f'Saved {len(cookies)} cookies'})
-        else:
-            # Если куки не получены, делаем запрос к YouTube от имени сервера
-            session = requests.Session()
-            session.headers.update({
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Referer': 'https://www.google.com/'
-            })
-            
-            # Делаем запрос к YouTube
-            response = session.get('https://www.youtube.com/')
-            
-            # Получаем куки из ответа
-            server_cookies = []
-            for name, value in session.cookies.items():
-                cookie = {
-                    'name': name,
-                    'value': value,
-                    'domain': '.youtube.com',
-                    'path': '/'
-                }
-                server_cookies.append(cookie)
-            
-            # Добавляем дополнительные куки
-            for additional_cookie in additional_cookies:
-                if not any(c['name'] == additional_cookie['name'] for c in server_cookies):
-                    server_cookies.append(additional_cookie)
-            
-            # Сохраняем куки в файл
-            if server_cookies:
-                with open('/app/config/youtube.cookies', 'w') as f:
-                    json.dump(server_cookies, f)
-                
-                # Инициализируем YouTube API и устанавливаем куки
-                youtube_api = YouTubeAPI()
-                youtube_api.set_session_cookies(server_cookies)
-                
-                logger.info(f"Saved {len(server_cookies)} server YouTube cookies")
-                return jsonify({'status': 'success', 'message': f'Saved {len(server_cookies)} cookies'})
-            else:
-                logger.warning("No YouTube cookies received")
-                return jsonify({'status': 'error', 'error': 'No cookies received'})
+        with open('/app/config/youtube.cookies', 'w') as f:
+            json.dump(cookies, f)
+        
+        # Инициализируем YouTube API и устанавливаем куки
+        youtube_api = YouTubeAPI()
+        youtube_api.set_session_cookies(cookies)
+        
+        # Сохраняем куки в формате Netscape для yt-dlp
+        youtube_api.save_cookies_to_netscape_format()
+        
+        logger.info(f"Saved {len(cookies)} YouTube cookies")
+        return jsonify({'status': 'success', 'message': f'Saved {len(cookies)} cookies'})
     except Exception as e:
         logger.error(f"Error getting YouTube cookies: {e}")
         return jsonify({'status': 'error', 'error': str(e)})

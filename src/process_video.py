@@ -19,6 +19,7 @@ import yt_dlp  # Добавим импорт
 import uuid
 from .youtube_api import YouTubeAPI
 import json
+import subprocess
 
 # Настройка логирования
 def setup_logging():
@@ -180,6 +181,54 @@ class VideoProcessor:
                 logger.error(f"Error message: {e.msg}")
             raise RuntimeError(f"Failed to download video: {str(e)}")
 
+    def download_video_alternative(self, url, output_path):
+        """Альтернативный метод скачивания видео"""
+        try:
+            self.logger.info(f"Trying alternative download method for {url}")
+            
+            # Создаем директорию для выходного файла
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
+            # Используем subprocess для запуска yt-dlp напрямую
+            cmd = [
+                'yt-dlp',
+                '--format', 'best[ext=mp4]/best',
+                '--output', output_path,
+                '--no-playlist',
+                '--verbose',
+                '--geo-bypass',
+                '--cookies', '/app/config/youtube_netscape.cookies',
+                '--user-agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36',
+                '--referer', 'https://www.youtube.com/',
+                '--add-header', 'Accept-Language:en-US,en;q=0.9',
+                '--extractor-args', 'youtube:player_client=android,web,tv,ios',
+                url
+            ]
+            
+            self.logger.info(f"Running command: {' '.join(cmd)}")
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True
+            )
+            
+            stdout, stderr = process.communicate()
+            
+            if process.returncode != 0:
+                self.logger.error(f"yt-dlp error: {stderr}")
+                raise Exception(f"yt-dlp failed with code {process.returncode}: {stderr}")
+            
+            # Проверяем, что файл был скачан
+            if not os.path.exists(output_path):
+                raise FileNotFoundError(f"Downloaded file not found at {output_path}")
+            
+            self.logger.info(f"Video downloaded successfully to {output_path}")
+            return output_path
+        except Exception as e:
+            self.logger.error(f"Alternative download failed: {e}")
+            raise
+
     def transcribe_audio(self, audio_path):
         try:
             logger.info(f"Starting transcription of {audio_path}")
@@ -196,64 +245,55 @@ class VideoProcessor:
     def process_video(self, url):
         """Обработка видео"""
         try:
-            # Создаем временные директории
-            temp_dir = os.path.join(self.config['temp_dir'], str(uuid.uuid4()))
+            # Создаем временную директорию для файлов
+            temp_dir = os.path.join('/app/temp', str(uuid.uuid4()))
             os.makedirs(temp_dir, exist_ok=True)
             
-            # Генерируем имя файла
-            video_id = self._extract_video_id(url)
-            if not video_id:
-                raise ValueError("Invalid YouTube URL")
+            # Создаем директорию для выходных файлов
+            output_dir = '/app/output'
+            os.makedirs(output_dir, exist_ok=True)
             
-            video_path = os.path.join(temp_dir, f"{video_id}.mp4")
+            self.logger.info(f"Directories created/checked: temp_dir={temp_dir}, output_dir={output_dir}")
+            
+            # Загружаем модель Whisper
+            self.logger.info(f"Loading whisper model: {self.config['whisper']['model']}")
+            model = whisper.load_model(self.config['whisper']['model'])
+            self.logger.info("Whisper model loaded successfully")
             
             # Инициализируем YouTube API
             youtube_api = YouTubeAPI()
+            self.logger.info("YouTube API initialized successfully")
             
-            # Загружаем куки из файла
-            cookie_file = '/app/config/youtube.cookies'
-            if os.path.exists(cookie_file):
-                try:
-                    with open(cookie_file, 'r') as f:
-                        cookies = json.load(f)
-                        self.logger.info(f"Loaded {len(cookies)} cookies from {cookie_file}")
-                        
-                        # Устанавливаем куки в YouTubeAPI
-                        youtube_api.set_session_cookies(cookies)
-                except Exception as e:
-                    self.logger.error(f"Error loading cookies: {e}")
-
-            # Пробуем скачать видео
+            # Получаем ID видео из URL
+            video_id = self.extract_video_id(url)
+            if not video_id:
+                raise ValueError(f"Could not extract video ID from URL: {url}")
+            
+            # Путь для сохранения видео
+            video_path = os.path.join(temp_dir, f"{video_id}.mp4")
+            
+            # Проверяем наличие куков
+            if os.path.exists('/app/config/youtube.cookies'):
+                self.logger.info("YouTube cookies found, using them for download")
+            else:
+                self.logger.warning("No YouTube cookies found, download may be limited")
+            
+            # Пытаемся скачать видео с помощью YouTube API
             try:
                 self.logger.info(f"Attempting to download video {url} to {video_path}")
-                youtube_api.download_video(url, video_path)
-                self.logger.info(f"Download completed successfully")
+                video_path = youtube_api.download_video(url, video_path)
             except Exception as e:
                 self.logger.error(f"Error downloading video with YouTubeAPI: {e}")
                 
-                # Пробуем скачать напрямую через yt-dlp
+                # Пробуем альтернативный метод скачивания
                 self.logger.info("Trying to download directly with yt-dlp")
-                
-                # Получаем путь к файлу с куками
-                cookie_file = '/app/config/youtube_netscape.cookies'  # Используем абсолютный путь
-                
-                ydl_opts = {
-                    'format': 'best',
-                    'outtmpl': video_path,
-                    'quiet': False,
-                    'no_warnings': False,
-                    'ignoreerrors': True,
-                    'cookiefile': cookie_file if os.path.exists(cookie_file) else None,
-                    'nocheckcertificate': True,
-                    'http_headers': {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                    }
-                }
-                
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
+                try:
+                    video_path = self.download_video_alternative(url, video_path)
+                except Exception as alt_e:
+                    self.logger.error(f"Alternative download also failed: {alt_e}")
+                    raise Exception(f"Failed to download video: {e}. Alternative method also failed: {alt_e}")
             
-            # Проверяем, что файл скачался
+            # Проверяем, что видео скачано
             if not os.path.exists(video_path):
                 raise FileNotFoundError(f"Video file not found at {video_path}")
             
